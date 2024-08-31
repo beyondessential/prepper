@@ -1,0 +1,14 @@
+[package]
+name = "prepper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.81"
+pg_replicate = { path = "../pg_replicate/pg_replicate" }
+serde = { version = "1.0.209", features = ["derive"] }
+thiserror = "1.0.63"
+tokio = { version = "1.40.0", features = ["full"] }
+tokio-postgres = { git = "https://github.com/MaterializeInc/rust-postgres", default-features = false, rev = "02336bebb28507665184c21566e5d1dc8de1dd7d" }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
