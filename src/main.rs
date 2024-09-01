@@ -32,10 +32,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )
     .await?;
 
-    let sink = audit_sink::AuditSink {
-        path: ".".into(),
-        tables: Default::default(),
-    };
+    let sink = audit_sink::AuditSink::new("history".into());
 
     let batch_config = BatchConfig::new(100, Duration::from_secs(10));
     let mut pipeline = BatchDataPipeline::new(source, sink, PipelineAction::Both, batch_config);

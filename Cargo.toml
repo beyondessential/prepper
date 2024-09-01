@@ -7,6 +7,8 @@ edition = "2021"
 async-trait = "0.1.81"
 pg_replicate = { path = "../pg_replicate/pg_replicate" }
 serde = { version = "1.0.209", features = ["derive"] }
+serde_json = "1.0.127"
+subtle-encoding = "0.5.1"
 thiserror = "1.0.63"
 tokio = { version = "1.40.0", features = ["full"] }
 tokio-postgres = { git = "https://github.com/MaterializeInc/rust-postgres", default-features = false, rev = "02336bebb28507665184c21566e5d1dc8de1dd7d" }
