@@ -31,36 +31,6 @@ impl AuditSink {
             state: Default::default(),
         }
     }
-
-    // async fn load_tables_from_disk(&mut self) -> Result<(), AuditSinkError> {
-    //     let mut tables = HashSet::new();
-    //     let mut dir = tokio::fs::read_dir(&self.root).await?;
-    //     while let Some(entry) = dir.next_entry().await? {
-    //         let path = entry.path();
-    //         if !entry.file_type().await?.is_file() {
-    //             warn!(?path, "ignoring unexpected directory entry");
-    //             continue;
-    //         }
-    //         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-    //             warn!(?path, "ignoring non-UTF-8 filename");
-    //             continue
-    //         };
-
-    //         let Some(name) = name.strip_suffix(".json").and_then(|name| name.strip_prefix("_")) else {
-    //             warn!(?path, "ignoring non-JSON file");
-    //             continue
-    //         };
-
-    //         let Some((schema, table)) = name.split_once('.') else {
-    //             warn!(?path, "ignoring file with unexpected name");
-    //             continue
-    //         };
-
-    //         tables.insert(TableName { schema: schema.into(), name: table.into() });
-    //     }
-    //     self.tables = tables;
-    //     Ok(())
-    // }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
