@@ -482,6 +482,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 [[package]]
 name = "pg_replicate"
 version = "0.1.0"
+source = "git+https://github.com/passcod/pg_replicate?branch=main#04987c6e1d0db2c640bc047ffa6d07aeb6dfad78"
 dependencies = [
  "async-trait",
  "bytes",

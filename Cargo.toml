@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1.81"
-pg_replicate = { path = "../pg_replicate/pg_replicate" }
+pg_replicate = { git = "https://github.com/passcod/pg_replicate", branch = "main" }
 serde = { version = "1.0.209", features = ["derive"] }
 serde_json = "1.0.127"
 subtle-encoding = "0.5.1"
