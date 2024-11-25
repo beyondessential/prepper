@@ -1,0 +1,72 @@
+{
+	"namespace": "prepper",
+	"type": "record",
+	"name": "RecordSnapshot",
+	"fields": [
+		{
+			"type": {
+				"type": "string"
+			},
+			"name": "record_table"
+		},
+		{
+			"type": {
+				"type": "string"
+			},
+			"name": "record_id"
+		},
+		{
+			"type": {
+				"type": "string"
+			},
+			"name": "device_id"
+		},
+		{
+			"type": {
+				"type": "long",
+				"logicalType": "timestamp-micros"
+			},
+			"name": "recorded_at"
+		},
+		{
+			"type": {
+				"type": "long",
+				"logicalType": "timestamp-micros"
+			},
+			"name": "record_created_at"
+		},
+		{
+			"type": {
+				"type": "long",
+				"logicalType": "timestamp-micros"
+			},
+			"name": "record_updated_at"
+		},
+		{
+			"type": {
+				"type": "long",
+				"logicalType": "timestamp-micros"
+			},
+			"name": "record_deleted_at"
+		},
+		{
+			"type": {
+				"type": "long"
+			},
+			"name": "record_sync_tick"
+		},
+		{
+			"type": {
+				"type": "string"
+			},
+			"name": "record_updated_by"
+		},
+		{
+			"type": {
+				"type": "map",
+				"values": "bytes"
+			},
+			"name": "record_data"
+		}
+	]
+}

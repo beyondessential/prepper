@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     iter,
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}, sync::LazyLock,
 };
 
 use async_trait::async_trait;
@@ -17,6 +17,26 @@ use pg_replicate::{
 use tokio::io::AsyncWriteExt as _;
 use tokio_postgres::types::PgLsn;
 use tracing::{debug, info, warn};
+
+static RECORD_SNAPSHOT_SCHEMA: LazyLock<serde_avro_fast::Schema> = LazyLock::new(|| {
+    include_str!("record_snapshot_schema.avsc")
+        .parse()
+        .expect("Failed to parse schema")
+});
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct RecordSnapshot<'a> {
+    record_table: &'a str,
+    record_id: &'a str,
+    device_id: &'a str,
+    recorded_at: u64,
+    record_created_at: u64,
+    record_updated_at: u64,
+    record_deleted_at: u64,
+    record_sync_tick: u64,
+    record_updated_by: &'a str,
+    record_data: HashMap<&'a str, &'a [u8]>,
+}
 
 #[derive(Debug)]
 pub struct AuditSink {
