@@ -20,7 +20,7 @@ struct Args {
     pg: ConnectionString,
 
     /// Output directory
-    #[arg(short, long = "out", value_name = "PATH", value_hint = ValueHint::DirPath)]
+    #[arg(short = 'O', long = "out", value_name = "PATH", value_hint = ValueHint::DirPath)]
     out_dir: PathBuf,
 
     /// Maximum batch size
