@@ -168,8 +168,6 @@ impl From<TableDescription> for Table {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ColumnDescription {
     pub name: String,
-    #[serde(skip, default)]
-    pub typ: Option<tokio_postgres::types::Type>,
     pub type_oid: postgres_types::Oid,
     pub modifier: i32,
     pub nullable: bool,
@@ -214,7 +212,6 @@ impl TableDescription {
             .map(|col| ColumnDescription {
                 name: col.name,
                 type_oid: col.typ.oid(),
-                typ: Some(col.typ),
                 modifier: col.modifier,
                 nullable: col.nullable,
                 identity: col.identity,
