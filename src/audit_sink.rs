@@ -438,7 +438,7 @@ impl BatchSink for AuditSink {
             table_id
         );
         let Some(table) = self.state.tables.get(&table_id).cloned() else {
-            warn!(?table_id, "Received table rows for unknown table");
+            warn!(?table_id, "Received table rows for unknown/unsupported table");
             return Ok(());
         };
 
