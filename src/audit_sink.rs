@@ -123,10 +123,8 @@ impl AuditSink {
         let writer = &mut self.current.as_mut().unwrap().inner;
 
         let device = self.state.device();
-        for row in rows {
-            let event = table.row_to_event(device, row);
-            writer.serialize(event)?;
-        }
+        writer.serialize_all(rows.map(|row| table.row_to_event(device, row)))?;
+        writer.finish_block()?;
 
         Ok(())
     }
