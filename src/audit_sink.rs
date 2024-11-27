@@ -28,6 +28,7 @@ use serde_avro_fast::{
 };
 use tokio_postgres::types::PgLsn;
 use tracing::{debug, info, instrument, warn};
+use uuid::Uuid;
 
 use crate::snapshot::{Device, Event, Snapshot, Table, SCHEMA};
 
@@ -285,6 +286,9 @@ impl TableDescription {
                     .collect(),
                 id: match &row.values[self.offsets.id] {
                     Cell::String(s) => s.into(),
+                    Cell::Bytes(uuid) => {
+                        Uuid::from_bytes(uuid.clone().try_into().unwrap_or_default()).to_string()
+                    }
                     cell => panic!("string expected but got {cell:?}"),
                 },
                 created_at: match &row.values[self.offsets.created_at] {
