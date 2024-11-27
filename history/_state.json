@@ -1,9 +1,0 @@
-{
-  "last_lsn": 0,
-  "tables": {
-    "16391": {
-      "schema": "public",
-      "table": "data"
-    }
-  }
-}
