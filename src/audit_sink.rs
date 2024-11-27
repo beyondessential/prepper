@@ -185,7 +185,7 @@ pub struct Offsets {
 }
 
 impl Offsets {
-    fn new(columns: &[ColumnDescription]) -> Self {
+    fn new(columns: &[ColumnDescription]) -> Option<Self> {
         let by_name = |name| {
             columns
                 .iter()
@@ -193,19 +193,29 @@ impl Offsets {
                 .find_map(|(index, col)| if col.name == name { Some(index) } else { None })
         };
 
-        Self {
-            id: by_name("id").unwrap(),
-            created_at: by_name("created_at").unwrap(),
-            updated_at: by_name("updated_at").unwrap(),
-            deleted_at: by_name("deleted_at").unwrap(),
-            sync_tick: by_name("updated_at_sync_tick").unwrap(),
-            updated_by: by_name("updated_by"),
+        if let (Some(id), Some(created_at), Some(updated_at), Some(deleted_at), Some(sync_tick)) = (
+            by_name("id"),
+            by_name("created_at"),
+            by_name("updated_at"),
+            by_name("deleted_at"),
+            by_name("updated_at_sync_tick"),
+        ) {
+            Some(Self {
+                id,
+                created_at,
+                updated_at,
+                deleted_at,
+                sync_tick,
+                updated_by: by_name("updated_by_user_id"),
+            })
+        } else {
+            None
         }
     }
 }
 
 impl TableDescription {
-    pub fn new(id: TableId, schema: TableSchema) -> Self {
+    pub fn new(id: TableId, schema: TableSchema) -> Option<Self> {
         let columns: Vec<ColumnDescription> = schema
             .column_schemas
             .into_iter()
@@ -218,15 +228,13 @@ impl TableDescription {
             })
             .collect();
 
-        let offsets = Offsets::new(&columns);
-
-        Self {
+        Offsets::new(&columns).map(|offsets| Self {
             id,
             schema: schema.table_name.schema,
             name: schema.table_name.name,
             offsets,
             columns,
-        }
+        })
     }
 
     fn row_to_event(&self, device: Device, row: TableRow) -> Event {
@@ -409,11 +417,11 @@ impl BatchSink for AuditSink {
         &mut self,
         table_schemas: HashMap<TableId, TableSchema>,
     ) -> Result<(), Self::Error> {
-        self.state.tables.extend(
-            table_schemas
-                .into_iter()
-                .map(|(id, schema)| (id, Arc::new(TableDescription::new(id, schema)))),
-        );
+        self.state
+            .tables
+            .extend(table_schemas.into_iter().filter_map(|(id, schema)| {
+                TableDescription::new(id, schema).map(|desc| (id, Arc::new(desc)))
+            }));
         self.state.write(&self.root).await?;
         Ok(())
     }
