@@ -1,18 +1,23 @@
 use std::{
     collections::HashMap,
     iter,
-    path::{Path, PathBuf}, sync::LazyLock,
+    path::{Path, PathBuf},
+    sync::LazyLock,
+    u64,
 };
 
 use async_trait::async_trait;
 use pg_replicate::{
-    conversions::{cdc_event::CdcEvent, table_row::TableRow},
+    conversions::{
+        cdc_event::CdcEvent,
+        table_row::{Cell, TableRow},
+    },
     pipeline::{
         sinks::{BatchSink, SinkError},
         sources::postgres::TableCopyStreamError,
         PipelineResumptionState,
     },
-    table::{TableId, TableName, TableSchema},
+    table::{TableId, TableSchema},
 };
 use tokio::io::AsyncWriteExt as _;
 use tokio_postgres::types::PgLsn;
@@ -24,18 +29,32 @@ static RECORD_SNAPSHOT_SCHEMA: LazyLock<serde_avro_fast::Schema> = LazyLock::new
         .expect("Failed to parse schema")
 });
 
+// TODO: generate schema from type with BuildSchema derive, verify that
+//       it's compatible with the handwritten schema/ignore logicalTypes
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
-pub struct RecordSnapshot<'a> {
-    record_table: &'a str,
-    record_id: &'a str,
-    device_id: &'a str,
-    recorded_at: u64,
-    record_created_at: u64,
-    record_updated_at: u64,
-    record_deleted_at: u64,
-    record_sync_tick: u64,
-    record_updated_by: &'a str,
-    record_data: HashMap<&'a str, &'a [u8]>,
+pub struct RecordSnapshot {
+    table: RecordTable,
+    device: RecordDevice,
+    id: String,
+    created_at: u64,
+    updated_at: u64,
+    deleted_at: Option<u64>,
+    sync_tick: i64,
+    updated_by: Option<String>,
+    data: HashMap<String, Vec<u8>>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct RecordTable {
+    oid: TableId,
+    schema: String,
+    name: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct RecordDevice {
+    id: [u8; 16], // uuid
+    ts: u64,      // nanoseconds
 }
 
 #[derive(Debug)]
@@ -51,89 +70,239 @@ impl AuditSink {
             state: Default::default(),
         }
     }
+    
+    async fn write_rows(&self, table: &TableDescription, rows: impl Iterator<Item = TableRow>) -> Result<(), AuditSinkError> {
+        todo!()
+    }
+    
+    async fn write_delete(&self, table: &TableDescription, row: TableRow) -> Result<(), AuditSinkError> {
+        todo!()
+    }
+    
+    async fn write_truncate(&self, table: &TableDescription) -> Result<(), AuditSinkError> {
+        todo!()
+    }
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct TableFile {
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TableDescription {
+    pub id: TableId,
     pub schema: String,
-    pub table: String,
+    pub name: String,
+    pub columns: Vec<ColumnDescription>,
+    pub offsets: Offsets,
 }
 
-impl From<TableName> for TableFile {
-    fn from(name: TableName) -> Self {
+impl From<TableDescription> for RecordTable {
+    fn from(value: TableDescription) -> Self {
         Self {
-            schema: name.schema,
-            table: name.name,
+            oid: value.id,
+            schema: value.schema.into(),
+            name: value.name.into(),
         }
     }
 }
 
-impl TableFile {
-    pub fn path(&self, root: &Path) -> PathBuf {
-        root.join(format!("{}.{}.json", self.schema, self.table))
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ColumnDescription {
+    pub name: String,
+    #[serde(skip, default)]
+    pub typ: Option<tokio_postgres::types::Type>,
+    pub type_oid: postgres_types::Oid,
+    pub modifier: i32,
+    pub nullable: bool,
+    pub identity: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Offsets {
+    id: usize,
+    created_at: usize,
+    updated_at: usize,
+    deleted_at: usize,
+    sync_tick: usize,
+    updated_by: Option<usize>,
+}
+
+impl Offsets {
+    fn new(columns: &[ColumnDescription]) -> Self {
+        let by_name = |name| {
+            columns
+                .iter()
+                .enumerate()
+                .find_map(|(index, col)| if col.name == name { Some(index) } else { None })
+        };
+
+        Self {
+            id: by_name("id").unwrap(),
+            created_at: by_name("created_at").unwrap(),
+            updated_at: by_name("updated_at").unwrap(),
+            deleted_at: by_name("deleted_at").unwrap(),
+            sync_tick: by_name("updated_at_sync_tick").unwrap(),
+            updated_by: by_name("updated_by"),
+        }
+    }
+}
+
+impl TableDescription {
+    pub fn new(id: TableId, schema: TableSchema) -> Self {
+        let columns: Vec<ColumnDescription> = schema
+            .column_schemas
+            .into_iter()
+            .map(|col| ColumnDescription {
+                name: col.name,
+                type_oid: col.typ.oid(),
+                typ: Some(col.typ),
+                modifier: col.modifier,
+                nullable: col.nullable,
+                identity: col.identity,
+            })
+            .collect();
+
+        let offsets = Offsets::new(&columns);
+
+        Self {
+            id,
+            schema: schema.table_name.schema,
+            name: schema.table_name.name,
+            offsets,
+            columns,
+        }
     }
 
-    pub async fn truncate(&self, root: &Path) -> Result<(), AuditSinkError> {
-        tokio::fs::remove_file(self.path(root)).await?;
-        Ok(())
-    }
-
-    pub async fn write_rows(
-        &self,
-        root: &Path,
-        op: &str,
-        rows: impl Iterator<Item = TableRow>,
-    ) -> Result<(), AuditSinkError> {
-        let mut file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.path(root))
-            .await?;
-
-        for row in rows {
-            // TODO: we should probably store the columns in the state and write an object here
-            let mut line = serde_json::to_vec(&Self::row_to_json(row, op))?;
-            line.push(b'\n');
-            file.write_all(&line).await?;
+    fn row_to_snapshot(&self, device: RecordDevice, row: TableRow) -> RecordSnapshot {
+        fn jb(json: serde_json::Value) -> Vec<u8> {
+            let mut bytes = json.to_string().into_bytes();
+            bytes.insert(0, b'j');
+            bytes.into()
         }
 
-        Ok(())
-    }
+        fn bb(bytes: &Vec<u8>) -> Vec<u8> {
+            let mut bytes = bytes.clone();
+            bytes.insert(0, b'b');
+            bytes.into()
+        }
 
-    fn row_to_json(row: TableRow, op: &str) -> serde_json::Value {
-        use pg_replicate::conversions::table_row::Cell::*;
-
-        serde_json::Value::Array(
-            iter::once(serde_json::Value::String(op.into())).chain(
-            row.values
-                .into_iter()
-                .filter_map(|cell| {
-                    Some(match cell {
-                        Null => serde_json::Value::Null,
-                        Bool(v) => serde_json::Value::Bool(v),
-                        String(v) => serde_json::Value::String(v),
-                        I16(v) => serde_json::Value::Number(serde_json::Number::from(v)),
-                        I32(v) => serde_json::Value::Number(serde_json::Number::from(v)),
-                        I64(v) => serde_json::Value::Number(serde_json::Number::from(v)),
-                        TimeStamp(v) => serde_json::Value::String(v.to_string()),
-                        TimeStampTz(v) => serde_json::Value::String(v.to_string()),
-                        Bytes(v) => serde_json::json!({ "base64": unsafe {
-                            // SAFETY: we know that the bytes are valid ASCII because they are base64
-                            ::std::string::String::from_utf8_unchecked(subtle_encoding::base64::encode(v))
-                        } }),
-                        Json(v) => v,
-                        _ => return None,
+        RecordSnapshot {
+            table: self.clone().into(),
+            device,
+            data: row
+                .values
+                .iter()
+                .enumerate()
+                .filter_map(|(index, cell)| {
+                    self.columns.get(index).map(|col| {
+                        (
+                            col.name.clone(),
+                            match cell {
+                                Cell::Null => jb(serde_json::Value::Null),
+                                Cell::Bool(v) => jb(serde_json::Value::Bool(*v)),
+                                Cell::String(v) => jb(serde_json::Value::String(v.clone())),
+                                Cell::I16(v) => {
+                                    jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                                }
+                                Cell::I32(v) => {
+                                    jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                                }
+                                Cell::I64(v) => {
+                                    jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                                }
+                                Cell::TimeStamp(v) => jb(serde_json::Value::String(v.to_string())),
+                                Cell::TimeStampTz(v) => {
+                                    jb(serde_json::Value::String(v.to_string()))
+                                }
+                                Cell::Bytes(v) => bb(v),
+                                Cell::Json(v) => jb(v.clone()),
+                                _ => vec![].into(),
+                            },
+                        )
                     })
-                }))
+                })
                 .collect(),
-        )
+            id: match &row.values[self.offsets.id] {
+                Cell::String(s) => s.into(),
+                cell => panic!("string expected but got {cell:?}"),
+            },
+            created_at: match &row.values[self.offsets.created_at] {
+                Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
+                cell => panic!("timestamptz expected but got {cell:?}"),
+            },
+            updated_at: match &row.values[self.offsets.updated_at] {
+                Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
+                cell => panic!("timestamptz expected but got {cell:?}"),
+            },
+            deleted_at: match &row.values[self.offsets.deleted_at] {
+                Cell::TimeStampTz(d) => d.timestamp_micros().try_into().ok(),
+                Cell::Null => None,
+                cell => panic!("timestamptz expected but got {cell:?}"),
+            },
+            sync_tick: match &row.values[self.offsets.sync_tick] {
+                Cell::I64(t) => *t,
+                cell => panic!("i64 expected but got {cell:?}"),
+            },
+            updated_by: self
+                .offsets
+                .updated_by
+                .map(|index| &row.values[index])
+                .and_then(|cell| match cell {
+                    Cell::String(s) => Some(s.into()),
+                    Cell::Null => None,
+                    cell => panic!("string expected but got {cell:?}"),
+                }),
+        }
     }
+
+    // pub fn path(&self, root: &Path) -> PathBuf {
+    //     root.join(format!("{}.{}.json", self.schema, self.table))
+    // }
+
+    // pub async fn truncate(&self, root: &Path) -> Result<(), AuditSinkError> {
+    //     tokio::fs::remove_file(self.path(root)).await?;
+    //     Ok(())
+    // }
+
+    // pub async fn write_rows(
+    //     &self,
+    //     root: &Path,
+    //     op: &str,
+    //     rows: impl Iterator<Item = TableRow>,
+    // ) -> Result<(), AuditSinkError> {
+    //     let mut file = tokio::fs::OpenOptions::new()
+    //         .create(true)
+    //         .append(true)
+    //         .open(self.path(root))
+    //         .await?;
+
+    //     for row in rows {
+    //         // TODO: we should probably store the columns in the state and write an object here
+    //         let mut line = serde_json::to_vec(&Self::row_to_json(row, op))?;
+    //         line.push(b'\n');
+    //         file.write_all(&line).await?;
+    //     }
+
+    //     Ok(())
+    // }
+
+    // fn row_to_json(row: TableRow, op: &str) -> serde_json::Value {
+    //     use pg_replicate::conversions::table_row::Cell::*;
+
+    //     serde_json::Value::Array(
+    //         iter::once(serde_json::Value::String(op.into())).chain(
+    //         row.values
+    //             .into_iter()
+    //             .filter_map(|cell| {
+    //                 Some()
+    //             }))
+    //             .collect(),
+    //     )
+    // }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct AuditState {
     pub last_lsn: u64,
-    pub tables: HashMap<TableId, TableFile>,
+    pub device_id: uuid::Uuid,
+    pub tables: HashMap<TableId, TableDescription>,
 }
 
 impl AuditState {
@@ -143,6 +312,16 @@ impl AuditState {
 
     fn path(root: &Path) -> PathBuf {
         root.join(Self::filename())
+    }
+
+    fn device(&self) -> RecordDevice {
+        RecordDevice {
+            id: self.device_id.into_bytes(),
+            ts: jiff::Timestamp::now()
+                .as_nanosecond()
+                .try_into()
+                .unwrap_or(u64::MAX),
+        }
     }
 
     /// Read the state from the given root directory.
@@ -201,11 +380,10 @@ impl BatchSink for AuditSink {
         &mut self,
         table_schemas: HashMap<TableId, TableSchema>,
     ) -> Result<(), Self::Error> {
-        // update the state file with new table mappings, but discard the column schemas
         self.state.tables.extend(
             table_schemas
                 .into_iter()
-                .map(|(id, schema)| (id, schema.table_name.into())),
+                .map(|(id, schema)| (id, TableDescription::new(id, schema))),
         );
         self.state.write(&self.root).await?;
         Ok(())
@@ -227,12 +405,7 @@ impl BatchSink for AuditSink {
             return Ok(());
         };
 
-        table
-            .write_rows(
-                &self.root,
-                "insert",
-                table_rows.into_iter().filter_map(Result::ok),
-            )
+        self.write_rows(table, table_rows.into_iter().filter_map(Result::ok))
             .await?;
         Ok(())
     }
@@ -247,9 +420,7 @@ impl BatchSink for AuditSink {
                         continue;
                     };
 
-                    table
-                        .write_rows(&self.root, "insert", iter::once(row))
-                        .await?;
+                    self.write_rows(table, iter::once(row)).await?;
                 }
                 CdcEvent::Update((table_id, row)) => {
                     let Some(table) = self.state.tables.get(&table_id) else {
@@ -257,9 +428,7 @@ impl BatchSink for AuditSink {
                         continue;
                     };
 
-                    table
-                        .write_rows(&self.root, "update", iter::once(row))
-                        .await?;
+                    self.write_rows(table, iter::once(row)).await?;
                 }
                 CdcEvent::Delete((table_id, row)) => {
                     let Some(table) = self.state.tables.get(&table_id) else {
@@ -267,9 +436,7 @@ impl BatchSink for AuditSink {
                         continue;
                     };
 
-                    table
-                        .write_rows(&self.root, "delete", iter::once(row))
-                        .await?;
+                    self.write_delete(table, row).await?;
                 }
                 CdcEvent::Relation(_) => { /* TODO */ }
                 _ => { /* ignore */ }
@@ -285,17 +452,18 @@ impl BatchSink for AuditSink {
             return Ok(());
         };
 
-        table
-            .write_rows(&self.root, "copied", iter::empty())
-            .await?;
+        self.write_rows(table, iter::empty()).await?;
         Ok(())
     }
 
     async fn truncate_table(&mut self, table_id: TableId) -> Result<(), Self::Error> {
         debug!("Table {} truncated", table_id);
-        if let Some(table) = self.state.tables.get(&table_id) {
-            table.truncate(&self.root).await?;
-        }
+        let Some(table) = self.state.tables.get(&table_id) else {
+            warn!(?table_id, "Received table truncate for unknown table");
+            return Ok(());
+        };
+
+        self.write_truncate(table).await?;
         Ok(())
     }
 }

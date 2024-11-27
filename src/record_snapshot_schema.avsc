@@ -5,68 +5,99 @@
 	"fields": [
 		{
 			"type": {
-				"type": "string"
+				"type": "record",
+				"name": "RecordTable",
+				"fields": [
+					{
+						"type": {
+							"type": "int"
+						},
+						"name": "oid"
+					},
+					{
+						"type": {
+							"type": "string"
+						},
+						"name": "schema"
+					},
+					{
+						"type": {
+							"type": "string"
+						},
+						"name": "name"
+					}
+				]
 			},
-			"name": "record_table"
+			"name": "table"
+		},
+		{
+			"type": {
+				"type": "record",
+				"name": "RecordDevice",
+				"fields": [
+					{
+						"type": {
+							"type": "fixed",
+							"size": 16,
+							"name": "uuid"
+						},
+						"name": "id"
+					},
+					{
+						"type": {
+							"type": "long",
+							"logicalType": "timestamp-nanos"
+						},
+						"name": "ts"
+					}
+				]
+			},
+			"name": "device"
 		},
 		{
 			"type": {
 				"type": "string"
 			},
-			"name": "record_id"
-		},
-		{
-			"type": {
-				"type": "string"
-			},
-			"name": "device_id"
+			"name": "id"
 		},
 		{
 			"type": {
 				"type": "long",
 				"logicalType": "timestamp-micros"
 			},
-			"name": "recorded_at"
+			"name": "created_at"
 		},
 		{
 			"type": {
 				"type": "long",
 				"logicalType": "timestamp-micros"
 			},
-			"name": "record_created_at"
+			"name": "updated_at"
 		},
 		{
 			"type": {
-				"type": "long",
-				"logicalType": "timestamp-micros"
+				"type": [null, "long"]
 			},
-			"name": "record_updated_at"
-		},
-		{
-			"type": {
-				"type": "long",
-				"logicalType": "timestamp-micros"
-			},
-			"name": "record_deleted_at"
+			"name": "deleted_at"
 		},
 		{
 			"type": {
 				"type": "long"
 			},
-			"name": "record_sync_tick"
+			"name": "sync_tick"
 		},
 		{
 			"type": {
-				"type": "string"
+				"type": [null, "string"]
 			},
-			"name": "record_updated_by"
+			"name": "updated_by"
 		},
 		{
 			"type": {
 				"type": "map",
 				"values": "bytes"
 			},
-			"name": "record_data"
+			"name": "data"
 		}
 	]
 }
