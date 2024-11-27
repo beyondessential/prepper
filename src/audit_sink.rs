@@ -26,7 +26,7 @@ use serde_avro_fast::{
     ser::{SerError, SerializerConfig},
 };
 use tokio_postgres::types::PgLsn;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument, warn};
 
 use crate::snapshot::{Device, Event, Snapshot, Table, SCHEMA};
 
@@ -54,11 +54,14 @@ impl fmt::Debug for OpenFile {
 impl OpenFile {
     fn new(root: &Path) -> Result<Self, AuditSinkError> {
         let ts = jiff::Timestamp::now();
-        let file = File::options()
-            .create_new(true)
-            .append(true)
-            .open(root.join(format!("events-{}.avro", ts.as_nanosecond())))?;
-        let writer = WriterBuilder::with_owned_config(SerializerConfig::new(&SCHEMA))
+        let path = root.join(format!("events-{}.avro", ts.as_nanosecond()));
+        debug!(?ts, ?path, "opening file");
+
+        let file = File::options().create_new(true).append(true).open(path)?;
+
+        let mut config = SerializerConfig::new(&SCHEMA);
+        config.allow_slow_sequence_to_bytes();
+        let writer = WriterBuilder::with_owned_config(config)
             .compression(Compression::Zstandard {
                 level: CompressionLevel::new(6),
             })
@@ -76,6 +79,7 @@ pub struct AuditSink {
 }
 
 impl AuditSink {
+    #[instrument(level = "debug")]
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
@@ -85,16 +89,19 @@ impl AuditSink {
         }
     }
 
+    #[instrument(level = "debug", skip(self))]
     fn should_rotate(&self) -> bool {
         if let Some(OpenFile { ts, .. }) = &self.current {
-            ts.saturating_add(self.rotate_interval) >= jiff::Timestamp::now()
+            ts.saturating_add(self.rotate_interval) < jiff::Timestamp::now()
         } else {
             true
         }
     }
 
+    #[instrument(level = "debug", skip(self))]
     fn rotate(&mut self) -> Result<(), AuditSinkError> {
-        if let Some(OpenFile { inner, .. }) = self.current.replace(OpenFile::new(&self.root)?) {
+        if let Some(OpenFile { inner, ts }) = self.current.replace(OpenFile::new(&self.root)?) {
+            debug!(?ts, "closing file");
             let file = inner.into_inner()?;
             file.sync_data()?;
         }
@@ -102,6 +109,7 @@ impl AuditSink {
         Ok(())
     }
 
+    #[instrument(level = "debug", skip(self, table, rows))]
     fn write_rows(
         &mut self,
         table: Arc<TableDescription>,
