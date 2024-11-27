@@ -82,7 +82,7 @@
 					},
 					{
 						"type": {
-							"type": [null, "long"]
+							"type": ["null", "long"]
 						},
 						"name": "deleted_at"
 					},
@@ -94,7 +94,7 @@
 					},
 					{
 						"type": {
-							"type": [null, "string"]
+							"type": ["null", "string"]
 						},
 						"name": "updated_by"
 					},
