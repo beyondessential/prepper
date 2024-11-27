@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fmt,
     fs::File,
+    io::Write as _,
     iter,
     path::{Path, PathBuf},
     sync::Arc,
@@ -385,6 +386,14 @@ impl BatchSink for AuditSink {
                 info!("No state found, starting from scratch");
                 let state = AuditState::default();
                 state.write(&self.root).await?;
+
+                info!(fingerprint=?SCHEMA.rabin_fingerprint(), "Writing schema to file");
+                let mut file = File::options()
+                    .create_new(true)
+                    .write(true)
+                    .open(self.root.join("schema.avsc"))?;
+                file.write_all(SCHEMA.json().as_bytes())?;
+
                 state
             }
         };
