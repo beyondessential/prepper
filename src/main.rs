@@ -11,6 +11,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt as _};
 
 mod audit_sink;
 mod postgres_sink;
+mod snapshot;
 
 #[derive(Debug, Parser)]
 #[command(version, about)]

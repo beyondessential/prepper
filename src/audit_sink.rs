@@ -1,8 +1,10 @@
 use std::{
     collections::HashMap,
+    fmt,
+    fs::File,
     iter,
     path::{Path, PathBuf},
-    sync::LazyLock,
+    sync::Arc,
     u64,
 };
 
@@ -19,48 +21,58 @@ use pg_replicate::{
     },
     table::{TableId, TableSchema},
 };
-use tokio::io::AsyncWriteExt as _;
+use serde_avro_fast::{
+    object_container_file_encoding::{Compression, CompressionLevel, Writer, WriterBuilder},
+    ser::{SerError, SerializerConfig},
+};
 use tokio_postgres::types::PgLsn;
 use tracing::{debug, info, warn};
 
-static RECORD_SNAPSHOT_SCHEMA: LazyLock<serde_avro_fast::Schema> = LazyLock::new(|| {
-    include_str!("record_snapshot_schema.avsc")
-        .parse()
-        .expect("Failed to parse schema")
-});
+use crate::snapshot::{Device, Event, Snapshot, Table, SCHEMA};
 
-// TODO: generate schema from type with BuildSchema derive, verify that
-//       it's compatible with the handwritten schema/ignore logicalTypes
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
-pub struct RecordSnapshot {
-    table: RecordTable,
-    device: RecordDevice,
-    id: String,
-    created_at: u64,
-    updated_at: u64,
-    deleted_at: Option<u64>,
-    sync_tick: i64,
-    updated_by: Option<String>,
-    data: HashMap<String, Vec<u8>>,
+/// Timestamp in nanoseconds
+///
+/// This panics if the timestamp cannot fit in a u64, which will only happen past the year 2554.
+fn ts() -> u64 {
+    jiff::Timestamp::now().as_nanosecond().try_into().unwrap()
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
-pub struct RecordTable {
-    oid: TableId,
-    schema: String,
-    name: String,
+struct OpenFile {
+    ts: jiff::Timestamp,
+    inner: Writer<'static, 'static, File>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
-pub struct RecordDevice {
-    id: [u8; 16], // uuid
-    ts: u64,      // nanoseconds
+impl fmt::Debug for OpenFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OpenFile")
+            .field("ts", &self.ts)
+            .field("inner", &"AvroWriter { .. }")
+            .finish()
+    }
+}
+
+impl OpenFile {
+    fn new(root: &Path) -> Result<Self, AuditSinkError> {
+        let ts = jiff::Timestamp::now();
+        let file = File::options()
+            .create_new(true)
+            .append(true)
+            .open(root.join(format!("events-{}.avro", ts.as_nanosecond())))?;
+        let writer = WriterBuilder::with_owned_config(SerializerConfig::new(&SCHEMA))
+            .compression(Compression::Zstandard {
+                level: CompressionLevel::new(6),
+            })
+            .build(file)?;
+        Ok(Self { ts, inner: writer })
+    }
 }
 
 #[derive(Debug)]
 pub struct AuditSink {
     root: PathBuf,
     state: AuditState,
+    rotate_interval: jiff::Span,
+    current: Option<OpenFile>,
 }
 
 impl AuditSink {
@@ -68,19 +80,61 @@ impl AuditSink {
         Self {
             root,
             state: Default::default(),
+            rotate_interval: jiff::Span::new().hours(1),
+            current: None,
         }
     }
-    
-    async fn write_rows(&self, table: &TableDescription, rows: impl Iterator<Item = TableRow>) -> Result<(), AuditSinkError> {
-        todo!()
+
+    fn should_rotate(&self) -> bool {
+        if let Some(OpenFile { ts, .. }) = &self.current {
+            ts.saturating_add(self.rotate_interval) >= jiff::Timestamp::now()
+        } else {
+            true
+        }
     }
-    
-    async fn write_delete(&self, table: &TableDescription, row: TableRow) -> Result<(), AuditSinkError> {
-        todo!()
+
+    fn rotate(&mut self) -> Result<(), AuditSinkError> {
+        if let Some(OpenFile { inner, .. }) = self.current.replace(OpenFile::new(&self.root)?) {
+            let file = inner.into_inner()?;
+            file.sync_data()?;
+        }
+
+        Ok(())
     }
-    
-    async fn write_truncate(&self, table: &TableDescription) -> Result<(), AuditSinkError> {
-        todo!()
+
+    fn write_rows(
+        &mut self,
+        table: Arc<TableDescription>,
+        rows: impl Iterator<Item = TableRow>,
+    ) -> Result<(), AuditSinkError> {
+        if self.should_rotate() {
+            self.rotate()?;
+        }
+
+        // UNWRAP: above rotation guarantees current is Some
+        let writer = &mut self.current.as_mut().unwrap().inner;
+
+        let device = self.state.device();
+        for row in rows {
+            let event = table.row_to_event(device, row);
+            writer.serialize(event)?;
+        }
+
+        Ok(())
+    }
+
+    fn write_delete(
+        &mut self,
+        _table: Arc<TableDescription>,
+        _row: TableRow,
+    ) -> Result<(), AuditSinkError> {
+        // ignore deletes, as in the Tamanu sync model, no rows are ever deleted
+        Ok(())
+    }
+
+    fn write_truncate(&mut self, _table: Arc<TableDescription>) -> Result<(), AuditSinkError> {
+        // ignore truncates, as in the Tamanu sync model, no rows are ever deleted
+        Ok(())
     }
 }
 
@@ -93,7 +147,7 @@ pub struct TableDescription {
     pub offsets: Offsets,
 }
 
-impl From<TableDescription> for RecordTable {
+impl From<TableDescription> for Table {
     fn from(value: TableDescription) -> Self {
         Self {
             oid: value.id,
@@ -170,7 +224,7 @@ impl TableDescription {
         }
     }
 
-    fn row_to_snapshot(&self, device: RecordDevice, row: TableRow) -> RecordSnapshot {
+    fn row_to_event(&self, device: Device, row: TableRow) -> Event {
         fn jb(json: serde_json::Value) -> Vec<u8> {
             let mut bytes = json.to_string().into_bytes();
             bytes.insert(0, b'j');
@@ -183,126 +237,85 @@ impl TableDescription {
             bytes.into()
         }
 
-        RecordSnapshot {
+        Event {
             table: self.clone().into(),
             device,
-            data: row
-                .values
-                .iter()
-                .enumerate()
-                .filter_map(|(index, cell)| {
-                    self.columns.get(index).map(|col| {
-                        (
-                            col.name.clone(),
-                            match cell {
-                                Cell::Null => jb(serde_json::Value::Null),
-                                Cell::Bool(v) => jb(serde_json::Value::Bool(*v)),
-                                Cell::String(v) => jb(serde_json::Value::String(v.clone())),
-                                Cell::I16(v) => {
-                                    jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                                }
-                                Cell::I32(v) => {
-                                    jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                                }
-                                Cell::I64(v) => {
-                                    jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                                }
-                                Cell::TimeStamp(v) => jb(serde_json::Value::String(v.to_string())),
-                                Cell::TimeStampTz(v) => {
-                                    jb(serde_json::Value::String(v.to_string()))
-                                }
-                                Cell::Bytes(v) => bb(v),
-                                Cell::Json(v) => jb(v.clone()),
-                                _ => vec![].into(),
-                            },
-                        )
+            snapshot: Snapshot {
+                data: row
+                    .values
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, cell)| {
+                        self.columns.get(index).map(|col| {
+                            (
+                                col.name.clone(),
+                                match cell {
+                                    Cell::Null => jb(serde_json::Value::Null),
+                                    Cell::Bool(v) => jb(serde_json::Value::Bool(*v)),
+                                    Cell::String(v) => jb(serde_json::Value::String(v.clone())),
+                                    Cell::I16(v) => {
+                                        jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                                    }
+                                    Cell::I32(v) => {
+                                        jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                                    }
+                                    Cell::I64(v) => {
+                                        jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                                    }
+                                    Cell::TimeStamp(v) => {
+                                        jb(serde_json::Value::String(v.to_string()))
+                                    }
+                                    Cell::TimeStampTz(v) => {
+                                        jb(serde_json::Value::String(v.to_string()))
+                                    }
+                                    Cell::Bytes(v) => bb(v),
+                                    Cell::Json(v) => jb(v.clone()),
+                                    _ => vec![].into(),
+                                },
+                            )
+                        })
                     })
-                })
-                .collect(),
-            id: match &row.values[self.offsets.id] {
-                Cell::String(s) => s.into(),
-                cell => panic!("string expected but got {cell:?}"),
-            },
-            created_at: match &row.values[self.offsets.created_at] {
-                Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
-                cell => panic!("timestamptz expected but got {cell:?}"),
-            },
-            updated_at: match &row.values[self.offsets.updated_at] {
-                Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
-                cell => panic!("timestamptz expected but got {cell:?}"),
-            },
-            deleted_at: match &row.values[self.offsets.deleted_at] {
-                Cell::TimeStampTz(d) => d.timestamp_micros().try_into().ok(),
-                Cell::Null => None,
-                cell => panic!("timestamptz expected but got {cell:?}"),
-            },
-            sync_tick: match &row.values[self.offsets.sync_tick] {
-                Cell::I64(t) => *t,
-                cell => panic!("i64 expected but got {cell:?}"),
-            },
-            updated_by: self
-                .offsets
-                .updated_by
-                .map(|index| &row.values[index])
-                .and_then(|cell| match cell {
-                    Cell::String(s) => Some(s.into()),
-                    Cell::Null => None,
+                    .collect(),
+                id: match &row.values[self.offsets.id] {
+                    Cell::String(s) => s.into(),
                     cell => panic!("string expected but got {cell:?}"),
-                }),
+                },
+                created_at: match &row.values[self.offsets.created_at] {
+                    Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
+                    cell => panic!("timestamptz expected but got {cell:?}"),
+                },
+                updated_at: match &row.values[self.offsets.updated_at] {
+                    Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
+                    cell => panic!("timestamptz expected but got {cell:?}"),
+                },
+                deleted_at: match &row.values[self.offsets.deleted_at] {
+                    Cell::TimeStampTz(d) => d.timestamp_micros().try_into().ok(),
+                    Cell::Null => None,
+                    cell => panic!("timestamptz expected but got {cell:?}"),
+                },
+                sync_tick: match &row.values[self.offsets.sync_tick] {
+                    Cell::I64(t) => *t,
+                    cell => panic!("i64 expected but got {cell:?}"),
+                },
+                updated_by: self
+                    .offsets
+                    .updated_by
+                    .map(|index| &row.values[index])
+                    .and_then(|cell| match cell {
+                        Cell::String(s) => Some(s.into()),
+                        Cell::Null => None,
+                        cell => panic!("string expected but got {cell:?}"),
+                    }),
+            },
         }
     }
-
-    // pub fn path(&self, root: &Path) -> PathBuf {
-    //     root.join(format!("{}.{}.json", self.schema, self.table))
-    // }
-
-    // pub async fn truncate(&self, root: &Path) -> Result<(), AuditSinkError> {
-    //     tokio::fs::remove_file(self.path(root)).await?;
-    //     Ok(())
-    // }
-
-    // pub async fn write_rows(
-    //     &self,
-    //     root: &Path,
-    //     op: &str,
-    //     rows: impl Iterator<Item = TableRow>,
-    // ) -> Result<(), AuditSinkError> {
-    //     let mut file = tokio::fs::OpenOptions::new()
-    //         .create(true)
-    //         .append(true)
-    //         .open(self.path(root))
-    //         .await?;
-
-    //     for row in rows {
-    //         // TODO: we should probably store the columns in the state and write an object here
-    //         let mut line = serde_json::to_vec(&Self::row_to_json(row, op))?;
-    //         line.push(b'\n');
-    //         file.write_all(&line).await?;
-    //     }
-
-    //     Ok(())
-    // }
-
-    // fn row_to_json(row: TableRow, op: &str) -> serde_json::Value {
-    //     use pg_replicate::conversions::table_row::Cell::*;
-
-    //     serde_json::Value::Array(
-    //         iter::once(serde_json::Value::String(op.into())).chain(
-    //         row.values
-    //             .into_iter()
-    //             .filter_map(|cell| {
-    //                 Some()
-    //             }))
-    //             .collect(),
-    //     )
-    // }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct AuditState {
     pub last_lsn: u64,
     pub device_id: uuid::Uuid,
-    pub tables: HashMap<TableId, TableDescription>,
+    pub tables: HashMap<TableId, Arc<TableDescription>>,
 }
 
 impl AuditState {
@@ -314,13 +327,10 @@ impl AuditState {
         root.join(Self::filename())
     }
 
-    fn device(&self) -> RecordDevice {
-        RecordDevice {
+    fn device(&self) -> Device {
+        Device {
             id: self.device_id.into_bytes(),
-            ts: jiff::Timestamp::now()
-                .as_nanosecond()
-                .try_into()
-                .unwrap_or(u64::MAX),
+            ts: ts(),
         }
     }
 
@@ -346,8 +356,11 @@ pub enum AuditSinkError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Serialisation error: {0}")]
-    Serde(#[from] serde_json::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Avro error: {0}")]
+    Avro(#[from] SerError),
 }
 
 impl SinkError for AuditSinkError {}
@@ -383,7 +396,7 @@ impl BatchSink for AuditSink {
         self.state.tables.extend(
             table_schemas
                 .into_iter()
-                .map(|(id, schema)| (id, TableDescription::new(id, schema))),
+                .map(|(id, schema)| (id, Arc::new(TableDescription::new(id, schema)))),
         );
         self.state.write(&self.root).await?;
         Ok(())
@@ -400,13 +413,12 @@ impl BatchSink for AuditSink {
             table_rows.len(),
             table_id
         );
-        let Some(table) = self.state.tables.get(&table_id) else {
+        let Some(table) = self.state.tables.get(&table_id).cloned() else {
             warn!(?table_id, "Received table rows for unknown table");
             return Ok(());
         };
 
-        self.write_rows(table, table_rows.into_iter().filter_map(Result::ok))
-            .await?;
+        self.write_rows(table, table_rows.into_iter().filter_map(Result::ok))?;
         Ok(())
     }
 
@@ -415,28 +427,28 @@ impl BatchSink for AuditSink {
         for event in events {
             match event {
                 CdcEvent::Insert((table_id, row)) => {
-                    let Some(table) = self.state.tables.get(&table_id) else {
+                    let Some(table) = self.state.tables.get(&table_id).cloned() else {
                         warn!(?table_id, "Received insert for unknown table");
                         continue;
                     };
 
-                    self.write_rows(table, iter::once(row)).await?;
+                    self.write_rows(table, iter::once(row))?;
                 }
                 CdcEvent::Update((table_id, row)) => {
-                    let Some(table) = self.state.tables.get(&table_id) else {
+                    let Some(table) = self.state.tables.get(&table_id).cloned() else {
                         warn!(?table_id, "Received update for unknown table");
                         continue;
                     };
 
-                    self.write_rows(table, iter::once(row)).await?;
+                    self.write_rows(table, iter::once(row))?;
                 }
                 CdcEvent::Delete((table_id, row)) => {
-                    let Some(table) = self.state.tables.get(&table_id) else {
+                    let Some(table) = self.state.tables.get(&table_id).cloned() else {
                         warn!(?table_id, "Received delete for unknown table");
                         continue;
                     };
 
-                    self.write_delete(table, row).await?;
+                    self.write_delete(table, row)?;
                 }
                 CdcEvent::Relation(_) => { /* TODO */ }
                 _ => { /* ignore */ }
@@ -447,23 +459,23 @@ impl BatchSink for AuditSink {
 
     async fn table_copied(&mut self, table_id: TableId) -> Result<(), Self::Error> {
         debug!("Table {} copied", table_id);
-        let Some(table) = self.state.tables.get(&table_id) else {
+        let Some(table) = self.state.tables.get(&table_id).cloned() else {
             warn!(?table_id, "Received table copied for unknown table");
             return Ok(());
         };
 
-        self.write_rows(table, iter::empty()).await?;
+        self.write_rows(table, iter::empty())?;
         Ok(())
     }
 
     async fn truncate_table(&mut self, table_id: TableId) -> Result<(), Self::Error> {
         debug!("Table {} truncated", table_id);
-        let Some(table) = self.state.tables.get(&table_id) else {
+        let Some(table) = self.state.tables.get(&table_id).cloned() else {
             warn!(?table_id, "Received table truncate for unknown table");
             return Ok(());
         };
 
-        self.write_truncate(table).await?;
+        self.write_truncate(table)?;
         Ok(())
     }
 }

@@ -1,12 +1,13 @@
 {
 	"namespace": "prepper",
 	"type": "record",
-	"name": "RecordSnapshot",
+	"name": "Event",
 	"fields": [
 		{
+			"name": "table",
 			"type": {
 				"type": "record",
-				"name": "RecordTable",
+				"name": "Table",
 				"fields": [
 					{
 						"type": {
@@ -27,13 +28,13 @@
 						"name": "name"
 					}
 				]
-			},
-			"name": "table"
+			}
 		},
 		{
+			"name": "device",
 			"type": {
 				"type": "record",
-				"name": "RecordDevice",
+				"name": "Device",
 				"fields": [
 					{
 						"type": {
@@ -51,53 +52,61 @@
 						"name": "ts"
 					}
 				]
-			},
-			"name": "device"
+			}
 		},
 		{
+			"name": "snapshot",
 			"type": {
-				"type": "string"
-			},
-			"name": "id"
-		},
-		{
-			"type": {
-				"type": "long",
-				"logicalType": "timestamp-micros"
-			},
-			"name": "created_at"
-		},
-		{
-			"type": {
-				"type": "long",
-				"logicalType": "timestamp-micros"
-			},
-			"name": "updated_at"
-		},
-		{
-			"type": {
-				"type": [null, "long"]
-			},
-			"name": "deleted_at"
-		},
-		{
-			"type": {
-				"type": "long"
-			},
-			"name": "sync_tick"
-		},
-		{
-			"type": {
-				"type": [null, "string"]
-			},
-			"name": "updated_by"
-		},
-		{
-			"type": {
-				"type": "map",
-				"values": "bytes"
-			},
-			"name": "data"
+				"type": "record",
+				"name": "Snapshot",
+				"fields": [
+					{
+						"type": {
+							"type": "string"
+						},
+						"name": "id"
+					},
+					{
+						"type": {
+							"type": "long",
+							"logicalType": "timestamp-micros"
+						},
+						"name": "created_at"
+					},
+					{
+						"type": {
+							"type": "long",
+							"logicalType": "timestamp-micros"
+						},
+						"name": "updated_at"
+					},
+					{
+						"type": {
+							"type": [null, "long"]
+						},
+						"name": "deleted_at"
+					},
+					{
+						"type": {
+							"type": "long"
+						},
+						"name": "sync_tick"
+					},
+					{
+						"type": {
+							"type": [null, "string"]
+						},
+						"name": "updated_by"
+					},
+					{
+						"type": {
+							"type": "map",
+							"values": "bytes"
+						},
+						"name": "data"
+					}
+				]
+			}
 		}
 	]
 }
