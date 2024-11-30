@@ -13,7 +13,8 @@ use async_trait::async_trait;
 use pg_replicate::{
     conversions::{
         cdc_event::CdcEvent,
-        table_row::{Cell, TableRow},
+        Cell,
+        table_row::TableRow,
     },
     pipeline::{
         sinks::{BatchSink, SinkError},
@@ -171,7 +172,7 @@ pub struct ColumnDescription {
     pub type_oid: postgres_types::Oid,
     pub modifier: i32,
     pub nullable: bool,
-    pub identity: bool,
+    pub primary: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -224,7 +225,7 @@ impl TableDescription {
                 type_oid: col.typ.oid(),
                 modifier: col.modifier,
                 nullable: col.nullable,
-                identity: col.identity,
+                primary: col.primary,
             })
             .collect();
 
