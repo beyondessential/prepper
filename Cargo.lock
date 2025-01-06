@@ -986,6 +986,7 @@ dependencies = [
 [[package]]
 name = "pg_replicate"
 version = "0.1.0"
+source = "git+https://github.com/supabase/pg_replicate?branch=main#1f7c0f7ce5399d44c07070716fac451060f9bb7c"
 dependencies = [
  "async-trait",
  "bigdecimal",

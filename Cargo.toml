@@ -9,8 +9,7 @@ clap = { version = "4.5.21", features = ["derive", "cargo"] }
 jiff = "0.1.14"
 miette = { version = "7.4.0", features = ["fancy"] }
 pg-connection-string = "0.0.2"
-# pg_replicate = { git = "https://github.com/passcod/pg_replicate", branch = "improvements" }
-pg_replicate = { path = "../pg_replicate/pg_replicate" }
+pg_replicate = { git = "https://github.com/supabase/pg_replicate", branch = "main" }
 postgres-types = { git = "https://github.com/imor/rust-postgres", default-features = false, rev = "20265ef38e32a06f76b6f9b678e2077fc2211f6b" }
 serde = { version = "1.0.209", features = ["derive", "rc"] }
 serde_avro_derive = "0.3.1"

@@ -1,17 +1,20 @@
 use std::{
-    backtrace::Backtrace, collections::HashMap, fmt, fs::File, io::Write as _, iter, path::{Path, PathBuf}, sync::Arc, u64
+    backtrace::Backtrace,
+    collections::HashMap,
+    fmt,
+    fs::File,
+    io::Write as _,
+    iter,
+    path::{Path, PathBuf},
+    sync::Arc,
+    u64,
 };
 
 use async_trait::async_trait;
 use pg_replicate::{
-    conversions::{
-        cdc_event::CdcEvent,
-        Cell,
-        table_row::TableRow,
-    },
+    conversions::{cdc_event::CdcEvent, table_row::TableRow, Cell},
     pipeline::{
         sinks::{BatchSink, SinkError},
-        sources::postgres::TableCopyStreamError,
         PipelineResumptionState,
     },
     table::{TableId, TableSchema},
@@ -480,7 +483,7 @@ impl BatchSink for AuditSink {
 
     async fn write_table_rows(
         &mut self,
-        table_rows: Vec<Result<TableRow, TableCopyStreamError>>,
+        table_rows: Vec<TableRow>,
         table_id: TableId,
     ) -> Result<(), Self::Error> {
         debug!(
@@ -490,11 +493,14 @@ impl BatchSink for AuditSink {
             table_id
         );
         let Some(table) = self.state.tables.get(&table_id).cloned() else {
-            warn!(?table_id, "Received table rows for unknown/unsupported table");
+            warn!(
+                ?table_id,
+                "Received table rows for unknown/unsupported table"
+            );
             return Ok(());
         };
 
-        self.write_rows(table, table_rows.into_iter().filter_map(Result::ok))?;
+        self.write_rows(table, table_rows.into_iter())?;
         Ok(())
     }
 
