@@ -1,6 +1,7 @@
-use std::{error::Error, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
 use clap::{CommandFactory, Parser, ValueHint};
+use miette::{IntoDiagnostic, Result};
 use pg_connection_string::ConnectionString;
 use pg_replicate::pipeline::{
     batching::{data_pipeline::BatchDataPipeline, BatchConfig},
@@ -35,11 +36,11 @@ struct Args {
 
 #[tokio::main]
 
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "prepper=debug".into()),
+                .unwrap_or_else(|_| "debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -80,7 +81,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }),
         ),
     )
-    .await?;
+    .await
+    .into_diagnostic()?;
 
     let sink = audit_sink::AuditSink::new(args.out_dir);
 
@@ -90,7 +92,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
     let mut pipeline = BatchDataPipeline::new(source, sink, PipelineAction::Both, batch_config);
 
-    pipeline.start().await?;
+    pipeline.start().await.into_diagnostic()?;
 
     Ok(())
 }

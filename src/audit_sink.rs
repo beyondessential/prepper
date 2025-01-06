@@ -1,12 +1,5 @@
 use std::{
-    collections::HashMap,
-    fmt,
-    fs::File,
-    io::Write as _,
-    iter,
-    path::{Path, PathBuf},
-    sync::Arc,
-    u64,
+    backtrace::Backtrace, collections::HashMap, fmt, fs::File, io::Write as _, iter, path::{Path, PathBuf}, sync::Arc, u64
 };
 
 use async_trait::async_trait;
@@ -87,7 +80,7 @@ impl AuditSink {
         Self {
             root,
             state: Default::default(),
-            rotate_interval: jiff::Span::new().hours(1),
+            rotate_interval: jiff::Span::new().minutes(1),
             current: None,
         }
     }
@@ -292,10 +285,11 @@ impl TableDescription {
                     .collect(),
                 id: match &row.values[self.offsets.id] {
                     Cell::String(s) => s.into(),
-                    Cell::Bytes(uuid) => {
-                        Uuid::from_bytes(uuid.clone().try_into().unwrap_or_default()).to_string()
+                    Cell::Uuid(u) => u.to_string(),
+                    Cell::Bytes(b) => {
+                        Uuid::from_bytes(b.clone().try_into().unwrap_or_default()).to_string()
                     }
-                    cell => panic!("string expected but got {cell:?}"),
+                    cell => panic!("string or uuid expected but got {cell:?}"),
                 },
                 created_at: match &row.values[self.offsets.created_at] {
                     Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
@@ -368,16 +362,73 @@ impl AuditState {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum AuditSinkError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io {
+        source: std::io::Error,
+        backtrace: Backtrace,
+    },
 
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
+    Json {
+        source: serde_json::Error,
+        backtrace: Backtrace,
+    },
 
-    #[error("Avro error: {0}")]
-    Avro(#[from] SerError),
+    Avro {
+        source: SerError,
+        backtrace: Backtrace,
+    },
+}
+
+impl From<std::io::Error> for AuditSinkError {
+    fn from(source: std::io::Error) -> Self {
+        Self::Io {
+            source,
+            backtrace: Backtrace::capture(),
+        }
+    }
+}
+
+impl From<serde_json::Error> for AuditSinkError {
+    fn from(source: serde_json::Error) -> Self {
+        Self::Json {
+            source,
+            backtrace: Backtrace::capture(),
+        }
+    }
+}
+
+impl From<SerError> for AuditSinkError {
+    fn from(source: SerError) -> Self {
+        Self::Avro {
+            source,
+            backtrace: Backtrace::capture(),
+        }
+    }
+}
+
+impl fmt::Display for AuditSinkError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io { source, backtrace } => write!(f, "io: {source}\n{backtrace}"),
+            Self::Json { source, backtrace } => write!(f, "json: {source}\n{backtrace}"),
+            Self::Avro { source, backtrace } => write!(f, "avro: {source}\n{backtrace}"),
+        }
+    }
+}
+
+impl std::error::Error for AuditSinkError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io { source, .. } => Some(source),
+            Self::Json { source, .. } => Some(source),
+            Self::Avro { source, .. } => Some(source),
+        }
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
 }
 
 impl SinkError for AuditSinkError {}

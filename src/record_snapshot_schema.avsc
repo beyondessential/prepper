@@ -90,13 +90,13 @@
 						"type": {
 							"type": "long"
 						},
-						"name": "sync_tick"
+						"name": "updated_at_sync_tick"
 					},
 					{
 						"type": {
 							"type": ["null", "string"]
 						},
-						"name": "updated_by"
+						"name": "updated_by_user_id"
 					},
 					{
 						"type": {

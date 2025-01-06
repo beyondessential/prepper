@@ -18,7 +18,9 @@ pub struct Snapshot {
     pub created_at: u64,
     pub updated_at: u64,
     pub deleted_at: Option<u64>,
+    #[serde(rename = "updated_at_sync_tick")]
     pub sync_tick: i64,
+    #[serde(rename = "updated_by_user_id")]
     pub updated_by: Option<String>,
     pub data: HashMap<String, Vec<u8>>,
 }
