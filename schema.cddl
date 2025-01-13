@@ -27,21 +27,21 @@ ts-etime = {
 }
 
 device = {
-    1: buuid, ; uuid
+    1: buuid, ; uuid, typically the machine uuid
     2: ts,    ; timestamp of the record as obtained from the device
 }
 
 snapshot = {
-    1: tamanuid,         ; uuid or string id
+    1: tamanuid,          ; uuid or string id
 
-    2: ts,               ; created_at
-    3: ts,               ; updated_at
-    4: ts / null,        ; deleted_at
+    2: ts,                ; created_at
+    3: ts,                ; updated_at
+    ? 4: ts / null,       ; deleted_at
 
-    5: int,              ; updated_at_sync_tick
-    6: tamanuid / null,  ; updated_by_user_id
+    5: int,               ; updated_at_sync_tick
+    ? 6: tamanuid / null, ; updated_by_user_id
 
-    ? 23: rowdata,       ; full data from the table row
+    ? 23: rowdata,        ; full data from the table row
     ; 23 is the largest int that's encoded in a single byte,
     ; and we're unlikely to ever have 17 more fields anyway.
 }
