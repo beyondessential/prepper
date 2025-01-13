@@ -61,20 +61,22 @@ pub struct Snapshot {
     pub id: TamanuId,
 
     #[cbor(n(2))]
-    pub data: RowData,
-
-    #[cbor(n(10))]
     pub created_at: Timestamp,
 
-    #[cbor(n(11))]
+    #[cbor(n(3))]
     pub updated_at: Timestamp,
 
-    #[cbor(n(12))]
+    #[cbor(n(4))]
     pub deleted_at: Option<Timestamp>,
 
-    #[cbor(n(20))]
+    #[cbor(n(5))]
     pub sync_tick: Int,
 
-    #[cbor(n(21))]
+    #[cbor(n(6))]
     pub updated_by: Option<TamanuId>,
+
+    // this is at the bottom so it's serialised last, such that the
+    // metadata fields can be read and then the data skipped efficiently
+    #[cbor(n(23))]
+    pub data: RowData,
 }

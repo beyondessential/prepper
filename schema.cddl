@@ -33,12 +33,15 @@ device = {
 
 snapshot = {
     1: tamanuid,         ; uuid or string id
-    ? 2: rowdata,   ; full data from the table row
 
-    10: ts,         ; created_at
-    11: ts,         ; updated_at
-    12: ts / null,  ; deleted_at
+    2: ts,               ; created_at
+    3: ts,               ; updated_at
+    4: ts / null,        ; deleted_at
 
-    20: int,       ; updated_at_sync_tick
-    21: tamanuid / null, ; updated_by_user_id
+    5: int,              ; updated_at_sync_tick
+    6: tamanuid / null,  ; updated_by_user_id
+
+    ? 23: rowdata,       ; full data from the table row
+    ; 23 is the largest int that's encoded in a single byte,
+    ; and we're unlikely to ever have 17 more fields anyway.
 }
