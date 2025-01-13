@@ -1,0 +1,35 @@
+buuid = #6.37(bstr)
+
+table = {
+    oid: int,
+    s: tstr, ; schema
+    n: tstr, ; name
+}
+
+; this is a tag 1001 etime profile with seconds and nanoseconds only
+ts = #6.1001(ts-etime)
+ts-etime = {
+    1: int, ; seconds since the epoch
+    -9: uint, ; nanoseconds fraction
+}
+
+device = {
+    id: buuid, ; uuid
+    ts: ts, ; timestamp of the record as obtained from the device
+}
+
+snapshot = {
+    id: tstr // buuid, ; uuid or string id
+    tc: ts, ; created_at
+    tu: ts, ; updated_at
+    td: ts // null, ; deleted_at
+    tk: uint, ; updated_at_sync_tick
+    uu: tstr // buuid // null, ; updated_by_user_id
+    data: cbor-any, ; full data from the table row
+}
+
+record = {
+    t: table,
+    d: device,
+    s: snapshot,
+}
