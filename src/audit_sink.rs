@@ -31,8 +31,8 @@ struct OpenFile {
 }
 
 impl OpenFile {
-    async fn new(root: &Path, device: Uuid) -> Result<Self, AuditSinkError> {
-        let ts = jiff::Timestamp::now();
+    async fn new(root: &Path, device: Uuid, ts: Option<jiff::Timestamp>) -> Result<Self, AuditSinkError> {
+        let ts = ts.unwrap_or_else(|| jiff::Timestamp::now());
         let path = root.join(format!(
             "events-{}-{}.cbor",
             device.as_simple(),
@@ -76,10 +76,10 @@ impl AuditSink {
     }
 
     #[instrument(level = "debug", skip(self))]
-    async fn rotate(&mut self) -> Result<(), AuditSinkError> {
+    async fn rotate(&mut self, ts: Option<jiff::Timestamp>) -> Result<(), AuditSinkError> {
         if let Some(OpenFile { mut inner, ts, .. }) = self
             .current
-            .replace(OpenFile::new(&self.root, self.state.device_id).await?)
+            .replace(OpenFile::new(&self.root, self.state.device_id, ts).await?)
         {
             debug!(?ts, "closing file");
             inner.flush().await?;
@@ -94,16 +94,27 @@ impl AuditSink {
     async fn write_rows(
         &mut self,
         table: Arc<TableDescription>,
-        rows: impl Iterator<Item = TableRow>,
+        mut rows: impl Iterator<Item = TableRow>,
     ) -> Result<(), AuditSinkError> {
+        let Some(first_row) = rows.next() else {
+            // if no rows, do nothing, don't even rotate needlessly
+            return Ok(());
+        };
+        
+        let device = self.state.device();
+        
+        let first_row = table.row_to_event(device, first_row)?;
+
         if self.should_rotate() {
-            self.rotate().await?;
+            // use the ts of the first object to name the file
+            self.rotate(Some(first_row.device.ts.0)).await?;
         }
 
         // UNWRAP: above rotation guarantees current is Some
         let writer = &mut self.current.as_mut().unwrap().inner;
+        writer.write(first_row).await?;
 
-        let device = self.state.device();
+        // process remaining rows
         for row in rows {
             writer.write(table.row_to_event(device, row)?).await?;
         }
