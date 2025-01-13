@@ -22,7 +22,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::event::{Device, Event, Snapshot, Table, Timestamp, VERSION};
+use crate::event::{Device, Event, Snapshot, Table, VERSION};
 
 #[derive(Debug)]
 struct OpenFile {
@@ -319,7 +319,7 @@ impl AuditState {
     fn device(&self) -> Device {
         Device {
             id: self.device_id,
-            ts: Timestamp(jiff::Timestamp::now()),
+            ts: jiff::Timestamp::now().into(),
         }
     }
 
