@@ -1,35 +1,44 @@
+event = {
+    1: table,
+    2: device,
+    3: snapshot,
+}
+
 buuid = #6.37(bstr)
 
+tid = tstr / buuid ; tables in Tamanu either have a string id or a uuid
+tamanuid = #6.8386104246373017956(tid) ; 0x74616d616e756964 = tamanuid
+; this shows up as an error in vscode with the cddl extension erroneously
+; see https://github.com/anweiss/cddl/issues/230
+
 table = {
-    oid: int,
-    s: tstr, ; schema
-    n: tstr, ; name
+    1: int,  ; oid
+    2: tstr, ; schema
+    3: tstr, ; name
 }
 
 ; this is a tag 1001 etime profile with seconds and nanoseconds only
 ts = #6.1001(ts-etime)
 ts-etime = {
-    1: int, ; seconds since the epoch
+    1: int,   ; seconds since the epoch
     -9: uint, ; nanoseconds fraction
 }
 
 device = {
-    id: buuid, ; uuid
-    ts: ts, ; timestamp of the record as obtained from the device
+    1: buuid, ; uuid
+    2: ts,    ; timestamp of the record as obtained from the device
 }
+
+row = { * tstr => any }
 
 snapshot = {
-    id: tstr // buuid, ; uuid or string id
-    tc: ts, ; created_at
-    tu: ts, ; updated_at
-    td: ts // null, ; deleted_at
-    tk: uint, ; updated_at_sync_tick
-    uu: tstr // buuid // null, ; updated_by_user_id
-    data: cbor-any, ; full data from the table row
-}
+    1: tid,         ; uuid or string id
+    ? 2: row,       ; full data from the table row
 
-record = {
-    t: table,
-    d: device,
-    s: snapshot,
+    10: ts,         ; created_at
+    11: ts,         ; updated_at
+    12: ts / null,  ; deleted_at
+
+    20: int,       ; updated_at_sync_tick
+    21: tid / null, ; updated_by_user_id
 }

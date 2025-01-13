@@ -8,6 +8,7 @@ async-trait = "0.1.81"
 clap = { version = "4.5.21", features = ["derive", "cargo"] }
 jiff = "0.1.14"
 miette = { version = "7.4.0", features = ["fancy"] }
+minicbor = { version = "0.25.1", features = ["derive", "std"] }
 pg-connection-string = "0.0.2"
 pg_replicate = { git = "https://github.com/supabase/pg_replicate", branch = "main" }
 postgres-types = { git = "https://github.com/imor/rust-postgres", default-features = false, rev = "20265ef38e32a06f76b6f9b678e2077fc2211f6b" }

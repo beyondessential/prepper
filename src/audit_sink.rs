@@ -27,7 +27,7 @@ use tokio_postgres::types::PgLsn;
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::snapshot::{Device, Event, Snapshot, Table, SCHEMA};
+use crate::avro_snapshot::{Device, Event, Snapshot, Table, SCHEMA};
 
 /// Timestamp in nanoseconds
 ///
