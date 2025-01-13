@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use super::uuid;
 
 use minicbor::{
@@ -17,19 +19,21 @@ pub enum TamanuId {
 
 impl From<String> for TamanuId {
     fn from(value: String) -> Self {
-        Self::Free(value)
+        uuid::Uuid::from_str(&value)
+            .map(Self::Uuid)
+            .unwrap_or_else(|_| Self::Free(value))
     }
 }
 
 impl From<&String> for TamanuId {
     fn from(value: &String) -> Self {
-        Self::Free(value.into())
+        value.to_owned().into()
     }
 }
 
 impl From<&str> for TamanuId {
     fn from(value: &str) -> Self {
-        Self::Free(value.into())
+        value.to_owned().into()
     }
 }
 
