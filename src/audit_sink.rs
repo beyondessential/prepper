@@ -1,16 +1,14 @@
 use std::{
     backtrace::Backtrace,
     collections::HashMap,
-    fmt,
-    fs::File,
-    io::Write as _,
-    iter,
+    fmt, iter,
     path::{Path, PathBuf},
     sync::Arc,
     u64,
 };
 
 use async_trait::async_trait;
+use minicbor_io::AsyncWriter;
 use pg_replicate::{
     conversions::{cdc_event::CdcEvent, table_row::TableRow, Cell},
     pipeline::{
@@ -19,53 +17,33 @@ use pg_replicate::{
     },
     table::{TableId, TableSchema},
 };
-use serde_avro_fast::{
-    object_container_file_encoding::{Compression, CompressionLevel, Writer, WriterBuilder},
-    ser::{SerError, SerializerConfig},
-};
 use tokio_postgres::types::PgLsn;
+use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::avro_snapshot::{Device, Event, Snapshot, Table, SCHEMA};
+use crate::event::{Device, Event, Snapshot, Table, Timestamp, VERSION};
 
-/// Timestamp in nanoseconds
-///
-/// This panics if the timestamp cannot fit in a u64, which will only happen past the year 2554.
-fn ts() -> u64 {
-    jiff::Timestamp::now().as_nanosecond().try_into().unwrap()
-}
-
+#[derive(Debug)]
 struct OpenFile {
     ts: jiff::Timestamp,
-    inner: Writer<'static, 'static, File>,
-}
-
-impl fmt::Debug for OpenFile {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("OpenFile")
-            .field("ts", &self.ts)
-            .field("inner", &"AvroWriter { .. }")
-            .finish()
-    }
+    inner: AsyncWriter<Compat<tokio::fs::File>>,
 }
 
 impl OpenFile {
-    fn new(root: &Path) -> Result<Self, AuditSinkError> {
+    async fn new(root: &Path, device: Uuid) -> Result<Self, AuditSinkError> {
         let ts = jiff::Timestamp::now();
-        let path = root.join(format!("events-{}.avro", ts.as_nanosecond()));
+        let path = root.join(format!(
+            "events-{}-{}.cbor",
+            device.as_simple(),
+            ts.as_nanosecond()
+        ));
         debug!(?ts, ?path, "opening file");
 
-        let file = File::options().create_new(true).append(true).open(path)?;
+        let file = tokio::fs::File::create_new(path).await?;
+        let inner = AsyncWriter::new(file.compat_write());
 
-        let mut config = SerializerConfig::new(&SCHEMA);
-        config.allow_slow_sequence_to_bytes();
-        let writer = WriterBuilder::with_owned_config(config)
-            .compression(Compression::Zstandard {
-                level: CompressionLevel::new(6),
-            })
-            .build(file)?;
-        Ok(Self { ts, inner: writer })
+        Ok(Self { ts, inner })
     }
 }
 
@@ -98,33 +76,39 @@ impl AuditSink {
     }
 
     #[instrument(level = "debug", skip(self))]
-    fn rotate(&mut self) -> Result<(), AuditSinkError> {
-        if let Some(OpenFile { inner, ts }) = self.current.replace(OpenFile::new(&self.root)?) {
+    async fn rotate(&mut self) -> Result<(), AuditSinkError> {
+        if let Some(OpenFile { mut inner, ts, .. }) = self
+            .current
+            .replace(OpenFile::new(&self.root, self.state.device_id).await?)
+        {
             debug!(?ts, "closing file");
-            let file = inner.into_inner()?;
-            file.sync_data()?;
+            inner.flush().await?;
+            let (file, _) = inner.into_parts();
+            file.into_inner().sync_data().await?;
         }
 
         Ok(())
     }
 
     #[instrument(level = "debug", skip(self, table, rows))]
-    fn write_rows(
+    async fn write_rows(
         &mut self,
         table: Arc<TableDescription>,
         rows: impl Iterator<Item = TableRow>,
     ) -> Result<(), AuditSinkError> {
         if self.should_rotate() {
-            self.rotate()?;
+            self.rotate().await?;
         }
 
         // UNWRAP: above rotation guarantees current is Some
         let writer = &mut self.current.as_mut().unwrap().inner;
 
         let device = self.state.device();
-        writer.serialize_all(rows.map(|row| table.row_to_event(device, row)))?;
-        writer.finish_block()?;
+        for row in rows {
+            writer.write(table.row_to_event(device, row)?).await?;
+        }
 
+        writer.flush().await?;
         Ok(())
     }
 
@@ -234,81 +218,71 @@ impl TableDescription {
         })
     }
 
-    fn row_to_event(&self, device: Device, row: TableRow) -> Event {
-        fn jb(json: serde_json::Value) -> Vec<u8> {
-            let mut bytes = json.to_string().into_bytes();
-            bytes.insert(0, b'j');
-            bytes.into()
-        }
-
-        fn bb(bytes: &Vec<u8>) -> Vec<u8> {
-            let mut bytes = bytes.clone();
-            bytes.insert(0, b'b');
-            bytes.into()
-        }
-
-        Event {
+    fn row_to_event(&self, device: Device, row: TableRow) -> Result<Event, AuditSinkError> {
+        // TODO: convert panics to errors
+        Ok(Event {
+            version: VERSION,
             table: self.clone().into(),
             device,
             snapshot: Snapshot {
-                data: row
-                    .values
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, cell)| {
-                        self.columns.get(index).map(|col| {
-                            (
-                                col.name.clone(),
-                                match cell {
-                                    Cell::Null => jb(serde_json::Value::Null),
-                                    Cell::Bool(v) => jb(serde_json::Value::Bool(*v)),
-                                    Cell::String(v) => jb(serde_json::Value::String(v.clone())),
-                                    Cell::I16(v) => {
-                                        jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                                    }
-                                    Cell::I32(v) => {
-                                        jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                                    }
-                                    Cell::I64(v) => {
-                                        jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                                    }
-                                    Cell::TimeStamp(v) => {
-                                        jb(serde_json::Value::String(v.to_string()))
-                                    }
-                                    Cell::TimeStampTz(v) => {
-                                        jb(serde_json::Value::String(v.to_string()))
-                                    }
-                                    Cell::Bytes(v) => bb(v),
-                                    Cell::Json(v) => jb(v.clone()),
-                                    _ => vec![].into(),
-                                },
-                            )
-                        })
-                    })
-                    .collect(),
                 id: match &row.values[self.offsets.id] {
                     Cell::String(s) => s.into(),
-                    Cell::Uuid(u) => u.to_string(),
+                    Cell::Uuid(u) => u.into(),
                     Cell::Bytes(b) => {
-                        Uuid::from_bytes(b.clone().try_into().unwrap_or_default()).to_string()
+                        Uuid::from_bytes(b.clone().try_into().unwrap_or_default()).into()
                     }
                     cell => panic!("string or uuid expected but got {cell:?}"),
                 },
+                // data: row
+                // .values
+                // .iter()
+                // .enumerate()
+                // .filter_map(|(index, cell)| {
+                //     self.columns.get(index).map(|col| {
+                //         (
+                //             col.name.clone(),
+                //             match cell {
+                //                 Cell::Null => jb(serde_json::Value::Null),
+                //                 Cell::Bool(v) => jb(serde_json::Value::Bool(*v)),
+                //                 Cell::String(v) => jb(serde_json::Value::String(v.clone())),
+                //                 Cell::I16(v) => {
+                //                     jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                //                 }
+                //                 Cell::I32(v) => {
+                //                     jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                //                 }
+                //                 Cell::I64(v) => {
+                //                     jb(serde_json::Value::Number(serde_json::Number::from(*v)))
+                //                 }
+                //                 Cell::TimeStamp(v) => {
+                //                     jb(serde_json::Value::String(v.to_string()))
+                //                 }
+                //                 Cell::TimeStampTz(v) => {
+                //                     jb(serde_json::Value::String(v.to_string()))
+                //                 }
+                //                 Cell::Bytes(v) => bb(v),
+                //                 Cell::Json(v) => jb(v.clone()),
+                //                 _ => vec![].into(),
+                //             },
+                //         )
+                //     })
+                // })
+                // .collect(),
                 created_at: match &row.values[self.offsets.created_at] {
-                    Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
+                    Cell::TimeStampTz(d) => d.try_into()?,
                     cell => panic!("timestamptz expected but got {cell:?}"),
                 },
                 updated_at: match &row.values[self.offsets.updated_at] {
-                    Cell::TimeStampTz(d) => d.timestamp_micros().try_into().unwrap_or(u64::MAX),
+                    Cell::TimeStampTz(d) => d.try_into()?,
                     cell => panic!("timestamptz expected but got {cell:?}"),
                 },
                 deleted_at: match &row.values[self.offsets.deleted_at] {
-                    Cell::TimeStampTz(d) => d.timestamp_micros().try_into().ok(),
+                    Cell::TimeStampTz(d) => Some(d.try_into()?),
                     Cell::Null => None,
                     cell => panic!("timestamptz expected but got {cell:?}"),
                 },
                 sync_tick: match &row.values[self.offsets.sync_tick] {
-                    Cell::I64(t) => *t,
+                    Cell::I64(t) => (*t).into(),
                     cell => panic!("i64 expected but got {cell:?}"),
                 },
                 updated_by: self
@@ -317,11 +291,12 @@ impl TableDescription {
                     .map(|index| &row.values[index])
                     .and_then(|cell| match cell {
                         Cell::String(s) => Some(s.into()),
+                        Cell::Uuid(u) => Some(u.into()),
                         Cell::Null => None,
                         cell => panic!("string expected but got {cell:?}"),
                     }),
             },
-        }
+        })
     }
 }
 
@@ -343,8 +318,8 @@ impl AuditState {
 
     fn device(&self) -> Device {
         Device {
-            id: self.device_id.into_bytes(),
-            ts: ts(),
+            id: self.device_id,
+            ts: Timestamp(jiff::Timestamp::now()),
         }
     }
 
@@ -377,8 +352,13 @@ pub enum AuditSinkError {
         backtrace: Backtrace,
     },
 
-    Avro {
-        source: SerError,
+    Cbor {
+        source: minicbor_io::Error,
+        backtrace: Backtrace,
+    },
+
+    Jiff {
+        source: jiff::Error,
         backtrace: Backtrace,
     },
 }
@@ -401,9 +381,18 @@ impl From<serde_json::Error> for AuditSinkError {
     }
 }
 
-impl From<SerError> for AuditSinkError {
-    fn from(source: SerError) -> Self {
-        Self::Avro {
+impl From<minicbor_io::Error> for AuditSinkError {
+    fn from(source: minicbor_io::Error) -> Self {
+        Self::Cbor {
+            source,
+            backtrace: Backtrace::capture(),
+        }
+    }
+}
+
+impl From<jiff::Error> for AuditSinkError {
+    fn from(source: jiff::Error) -> Self {
+        Self::Jiff {
             source,
             backtrace: Backtrace::capture(),
         }
@@ -415,7 +404,8 @@ impl fmt::Display for AuditSinkError {
         match self {
             Self::Io { source, backtrace } => write!(f, "io: {source}\n{backtrace}"),
             Self::Json { source, backtrace } => write!(f, "json: {source}\n{backtrace}"),
-            Self::Avro { source, backtrace } => write!(f, "avro: {source}\n{backtrace}"),
+            Self::Cbor { source, backtrace } => write!(f, "cbor: {source}\n{backtrace}"),
+            Self::Jiff { source, backtrace } => write!(f, "jiff: {source}\n{backtrace}"),
         }
     }
 }
@@ -425,7 +415,8 @@ impl std::error::Error for AuditSinkError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Json { source, .. } => Some(source),
-            Self::Avro { source, .. } => Some(source),
+            Self::Cbor { source, .. } => Some(source),
+            Self::Jiff { source, .. } => Some(source),
         }
     }
 
@@ -450,13 +441,6 @@ impl BatchSink for AuditSink {
                 info!("No state found, starting from scratch");
                 let state = AuditState::default();
                 state.write(&self.root).await?;
-
-                info!(fingerprint=?SCHEMA.rabin_fingerprint(), "Writing schema to file");
-                let mut file = File::options()
-                    .create_new(true)
-                    .write(true)
-                    .open(self.root.join("schema.avsc"))?;
-                file.write_all(SCHEMA.json().as_bytes())?;
 
                 state
             }
@@ -500,7 +484,7 @@ impl BatchSink for AuditSink {
             return Ok(());
         };
 
-        self.write_rows(table, table_rows.into_iter())?;
+        self.write_rows(table, table_rows.into_iter()).await?;
         Ok(())
     }
 
@@ -514,7 +498,7 @@ impl BatchSink for AuditSink {
                         continue;
                     };
 
-                    self.write_rows(table, iter::once(row))?;
+                    self.write_rows(table, iter::once(row)).await?;
                 }
                 CdcEvent::Update((table_id, row)) => {
                     let Some(table) = self.state.tables.get(&table_id).cloned() else {
@@ -522,7 +506,7 @@ impl BatchSink for AuditSink {
                         continue;
                     };
 
-                    self.write_rows(table, iter::once(row))?;
+                    self.write_rows(table, iter::once(row)).await?;
                 }
                 CdcEvent::Delete((table_id, row)) => {
                     let Some(table) = self.state.tables.get(&table_id).cloned() else {
@@ -546,7 +530,7 @@ impl BatchSink for AuditSink {
             return Ok(());
         };
 
-        self.write_rows(table, iter::empty())?;
+        self.write_rows(table, iter::empty()).await?;
         Ok(())
     }
 

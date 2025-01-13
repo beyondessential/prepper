@@ -1,4 +1,5 @@
 event = {
+    0: uint, ; schema version; should be 1
     1: table,
     2: device,
     3: snapshot,

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{i64, time::Duration};
 
 use minicbor::{
     data::{Int, Tag, Type},
@@ -9,8 +9,13 @@ use minicbor::{
 use pg_replicate::table::TableId;
 use uuid::Uuid;
 
+pub const VERSION: u8 = 1;
+
 #[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct Event {
+    #[cbor(n(0))]
+    pub version: u8,
+
     #[cbor(n(1))]
     pub table: Table,
 
@@ -103,6 +108,36 @@ pub enum TamanuId {
     Free(String),
 }
 
+impl From<String> for TamanuId {
+    fn from(value: String) -> Self {
+        Self::Free(value)
+    }
+}
+
+impl From<&String> for TamanuId {
+    fn from(value: &String) -> Self {
+        Self::Free(value.into())
+    }
+}
+
+impl From<&str> for TamanuId {
+    fn from(value: &str) -> Self {
+        Self::Free(value.into())
+    }
+}
+
+impl From<Uuid> for TamanuId {
+    fn from(value: Uuid) -> Self {
+        Self::Uuid(value)
+    }
+}
+
+impl From<&Uuid> for TamanuId {
+    fn from(value: &Uuid) -> Self {
+        Self::Uuid(value.to_owned())
+    }
+}
+
 const TAG_TAMANUID: Tag = Tag::new(u64::from_be_bytes([
     b't', b'a', b'm', b'a', b'n', b'u', b'i', b'd',
 ]));
@@ -170,6 +205,28 @@ const TAG_ETIME: Tag = Tag::new(1001);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Timestamp(pub jiff::Timestamp);
+
+impl From<jiff::Timestamp> for Timestamp {
+    fn from(value: jiff::Timestamp) -> Self {
+        Self(value)
+    }
+}
+
+impl TryFrom<chrono::DateTime<chrono::Utc>> for Timestamp {
+    type Error = jiff::Error;
+    fn try_from(value: chrono::DateTime<chrono::Utc>) -> Result<Self, Self::Error> {
+        let nanos = value.timestamp_nanos_opt().unwrap_or(i64::MAX);
+        jiff::Timestamp::from_nanosecond(nanos.into()).map(Self)
+    }
+}
+
+impl TryFrom<&chrono::DateTime<chrono::Utc>> for Timestamp {
+    type Error = jiff::Error;
+    fn try_from(value: &chrono::DateTime<chrono::Utc>) -> Result<Self, Self::Error> {
+        let nanos = value.timestamp_nanos_opt().unwrap_or(i64::MAX);
+        jiff::Timestamp::from_nanosecond(nanos.into()).map(Self)
+    }
+}
 
 // Postel's law:
 // - when we read it, we try to be as flexible as possible
