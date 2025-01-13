@@ -57,10 +57,10 @@ pub struct AuditSink {
 
 impl AuditSink {
     #[instrument(level = "debug")]
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf, device_id: Uuid) -> Self {
         Self {
             root,
-            state: Default::default(),
+            state: AuditState::new(device_id),
             rotate_interval: jiff::Span::new().minutes(1),
             current: None,
         }
@@ -269,7 +269,7 @@ impl TableDescription {
     }
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AuditState {
     pub last_lsn: u64,
     pub device_id: uuid::Uuid,
@@ -277,6 +277,14 @@ pub struct AuditState {
 }
 
 impl AuditState {
+    fn new(device_id: uuid::Uuid) -> Self {
+        Self {
+            last_lsn: 0,
+            device_id,
+            tables: Default::default(),
+        }
+    }
+    
     const fn filename() -> &'static str {
         "_state.json"
     }
@@ -408,7 +416,7 @@ impl BatchSink for AuditSink {
             Some(state) => state,
             None => {
                 info!("No state found, starting from scratch");
-                let state = AuditState::default();
+                let state = AuditState::new(self.state.device_id);
                 state.write(&self.root).await?;
 
                 state

@@ -1,4 +1,4 @@
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, str::FromStr, time::Duration};
 
 use clap::{CommandFactory, Parser, ValueHint};
 use miette::{IntoDiagnostic, Result};
@@ -9,6 +9,7 @@ use pg_replicate::pipeline::{
     PipelineAction,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt as _};
+use uuid::Uuid;
 
 mod audit_sink;
 mod event;
@@ -32,6 +33,10 @@ struct Args {
     /// Batch timeout in seconds
     #[arg(long, default_value = "10")]
     max_batch_time: u64,
+
+    /// Device UUID override
+    #[arg(long)]
+    device_uuid: Option<Uuid>,
 }
 
 #[tokio::main]
@@ -84,7 +89,20 @@ async fn main() -> Result<()> {
     .await
     .into_diagnostic()?;
 
-    let sink = audit_sink::AuditSink::new(args.out_dir);
+    let sink = audit_sink::AuditSink::new(
+        args.out_dir,
+        args.device_uuid
+            .or_else(|| {
+                machine_uid::get()
+                    .ok()
+                    .and_then(|s| {
+                        Uuid::from_str(&s)
+                        .ok()
+                        .or_else(|| u128::from_str_radix(&s, 16).ok().map(Uuid::from_u128))
+                    })
+                })
+            .unwrap_or_default(),
+    );
 
     let batch_config = BatchConfig::new(
         args.max_batch_size,

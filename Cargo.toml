@@ -8,6 +8,7 @@ async-trait = "0.1.81"
 chrono = "0.4.39"
 clap = { version = "4.5.21", features = ["derive", "cargo"] }
 jiff = "0.1.14"
+machine-uid = "0.5.3"
 miette = { version = "7.4.0", features = ["fancy"] }
 minicbor = { version = "0.25.1", features = ["derive", "std"] }
 minicbor-io = { version = "0.20.1", features = ["async-io"] }
