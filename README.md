@@ -24,7 +24,7 @@ Run prepper:
 
 ```
 mkdir history
-prepper --pg 'postgres://user@localhost/database-name?pub=prepper' --out history
+prepper --pg 'postgres://user@localhost/database-name?pub=prepper&slot=prepper' --out history
 ```
 
 To start from scratch delete and recreate the output folder.
