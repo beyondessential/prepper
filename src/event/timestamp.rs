@@ -9,7 +9,7 @@ use minicbor::{
 
 const TAG_ETIME: Tag = Tag::new(1001);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(pub jiff::Timestamp);
 
 impl From<jiff::Timestamp> for Timestamp {

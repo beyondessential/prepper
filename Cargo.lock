@@ -1086,6 +1086,7 @@ dependencies = [
  "miette",
  "minicbor",
  "minicbor-io",
+ "num-bigint",
  "pg-connection-string",
  "pg_replicate",
  "postgres-types",

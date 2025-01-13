@@ -22,7 +22,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::event::{Device, Event, Snapshot, Table, VERSION};
+use crate::event::{row_data::RowData, Device, Event, Snapshot, Table, VERSION};
 
 #[derive(Debug)]
 struct OpenFile {
@@ -233,41 +233,6 @@ impl TableDescription {
                     }
                     cell => panic!("string or uuid expected but got {cell:?}"),
                 },
-                // data: row
-                // .values
-                // .iter()
-                // .enumerate()
-                // .filter_map(|(index, cell)| {
-                //     self.columns.get(index).map(|col| {
-                //         (
-                //             col.name.clone(),
-                //             match cell {
-                //                 Cell::Null => jb(serde_json::Value::Null),
-                //                 Cell::Bool(v) => jb(serde_json::Value::Bool(*v)),
-                //                 Cell::String(v) => jb(serde_json::Value::String(v.clone())),
-                //                 Cell::I16(v) => {
-                //                     jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                //                 }
-                //                 Cell::I32(v) => {
-                //                     jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                //                 }
-                //                 Cell::I64(v) => {
-                //                     jb(serde_json::Value::Number(serde_json::Number::from(*v)))
-                //                 }
-                //                 Cell::TimeStamp(v) => {
-                //                     jb(serde_json::Value::String(v.to_string()))
-                //                 }
-                //                 Cell::TimeStampTz(v) => {
-                //                     jb(serde_json::Value::String(v.to_string()))
-                //                 }
-                //                 Cell::Bytes(v) => bb(v),
-                //                 Cell::Json(v) => jb(v.clone()),
-                //                 _ => vec![].into(),
-                //             },
-                //         )
-                //     })
-                // })
-                // .collect(),
                 created_at: match &row.values[self.offsets.created_at] {
                     Cell::TimeStampTz(d) => d.try_into()?,
                     cell => panic!("timestamptz expected but got {cell:?}"),
@@ -295,6 +260,10 @@ impl TableDescription {
                         Cell::Null => None,
                         cell => panic!("string expected but got {cell:?}"),
                     }),
+                data: RowData {
+                    columns: self.columns.clone(),
+                    cells: row.values,
+                },
             },
         })
     }

@@ -7,9 +7,10 @@ event = {
 
 buuid = #6.37(bstr)
 
-tid = tstr / buuid ; tables in Tamanu either have a string id or a uuid
-tamanuid = #6.8386104246373017956(tid) ; 0x74616d616e756964 = tamanuid
-; this shows up as an error in vscode with the cddl extension erroneously
+; tables in Tamanu either have a string id or a uuid
+tamanuid = #6.8386104246373017956(tstr / buuid) ; 0x74616d616e756964 = tamanuid
+rowdata = #6.8101821198451762547({ * tstr => any }) ; 0x706f737467726573 = postgres
+; these show up as errors in vscode with the cddl extension erroneously
 ; see https://github.com/anweiss/cddl/issues/230
 
 table = {
@@ -30,16 +31,14 @@ device = {
     2: ts,    ; timestamp of the record as obtained from the device
 }
 
-row = { * tstr => any }
-
 snapshot = {
-    1: tid,         ; uuid or string id
-    ? 2: row,       ; full data from the table row
+    1: tamanuid,         ; uuid or string id
+    ? 2: rowdata,   ; full data from the table row
 
     10: ts,         ; created_at
     11: ts,         ; updated_at
     12: ts / null,  ; deleted_at
 
     20: int,       ; updated_at_sync_tick
-    21: tid / null, ; updated_by_user_id
+    21: tamanuid / null, ; updated_by_user_id
 }
