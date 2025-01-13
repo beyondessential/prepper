@@ -89,18 +89,22 @@ async fn main() -> Result<()> {
     .await
     .into_diagnostic()?;
 
+    if !args.out_dir.try_exists().into_diagnostic()? {
+        tokio::fs::create_dir_all(&args.out_dir)
+            .await
+            .into_diagnostic()?;
+    }
+
     let sink = audit_sink::AuditSink::new(
         args.out_dir,
         args.device_uuid
             .or_else(|| {
-                machine_uid::get()
-                    .ok()
-                    .and_then(|s| {
-                        Uuid::from_str(&s)
+                machine_uid::get().ok().and_then(|s| {
+                    Uuid::from_str(&s)
                         .ok()
                         .or_else(|| u128::from_str_radix(&s, 16).ok().map(Uuid::from_u128))
-                    })
                 })
+            })
             .unwrap_or_default(),
     );
 
