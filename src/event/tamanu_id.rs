@@ -7,9 +7,7 @@ use minicbor::{
     Decode, Decoder, Encode, Encoder,
 };
 
-const TAG_TAMANUID: Tag = Tag::new(u64::from_be_bytes([
-    b't', b'a', b'm', b'a', b'n', b'u', b'i', b'd',
-]));
+const TAG_TAMANUID: Tag = Tag::new(u16::from_be_bytes([b'i', b'd']) as _);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TamanuId {

@@ -8,10 +8,10 @@ event = {
 buuid = #6.37(bstr)
 
 ; tables in Tamanu either have a string id or a uuid
-tamanuid = #6.8386104246373017956(tstr / buuid) ; 0x74616d616e756964 = tamanuid
-rowdata = #6.8101821198451762547({ * tstr => any }) ; 0x706f737467726573 = postgres
-; these show up as errors in vscode with the cddl extension erroneously
-; see https://github.com/anweiss/cddl/issues/230
+tamanuid = #6.26980(tstr / buuid) ; 0x6964 = 'i' 'd'
+
+; row data translated from the postgres representation
+rowdata = #6.28775({ * tstr => any }) ; 0x7067 = pg
 
 table = {
     1: int,  ; oid

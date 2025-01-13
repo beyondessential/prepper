@@ -11,9 +11,7 @@ use crate::{audit_sink::ColumnDescription, event::Timestamp};
 
 use super::uuid::encode_uuid;
 
-const TAG_POSTGRES: Tag = Tag::new(u64::from_be_bytes([
-    b'p', b'o', b's', b't', b'g', b'r', b'e', b's',
-]));
+const TAG_POSTGRES: Tag = Tag::new(u16::from_be_bytes([b'p', b'g']) as _);
 
 const TAG_JSON: Tag = Tag::new(262);
 
