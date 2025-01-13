@@ -17,6 +17,7 @@ use pg_replicate::{
     },
     table::{TableId, TableSchema},
 };
+use tokio::io::AsyncWriteExt;
 use tokio_postgres::types::PgLsn;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use tracing::{debug, info, instrument, warn};
@@ -31,7 +32,11 @@ struct OpenFile {
 }
 
 impl OpenFile {
-    async fn new(root: &Path, device: Uuid, ts: Option<jiff::Timestamp>) -> Result<Self, AuditSinkError> {
+    async fn new(
+        root: &Path,
+        device: Uuid,
+        ts: Option<jiff::Timestamp>,
+    ) -> Result<Self, AuditSinkError> {
         let ts = ts.unwrap_or_else(|| jiff::Timestamp::now());
         let path = root.join(format!(
             "events-{}-{}.cbor",
@@ -40,7 +45,9 @@ impl OpenFile {
         ));
         debug!(?ts, ?path, "opening file");
 
-        let file = tokio::fs::File::create_new(path).await?;
+        let mut file = tokio::fs::File::create_new(path).await?;
+        file.write_all(&[0; 4]).await?;
+
         let inner = AsyncWriter::new(file.compat_write());
 
         Ok(Self { ts, inner })
@@ -100,9 +107,9 @@ impl AuditSink {
             // if no rows, do nothing, don't even rotate needlessly
             return Ok(());
         };
-        
+
         let device = self.state.device();
-        
+
         let first_row = table.row_to_event(device, first_row)?;
 
         if self.should_rotate() {
@@ -295,7 +302,7 @@ impl AuditState {
             tables: Default::default(),
         }
     }
-    
+
     const fn filename() -> &'static str {
         "_state.json"
     }

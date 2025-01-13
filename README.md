@@ -54,3 +54,12 @@ in [CDDL](https://datatracker.ietf.org/doc/html/rfc8610) syntax.
 
 Each CBOR object is prefixed with a 32-bit unsigned integer in CBOR form
 (network-endian), which is the length of the serialised CBOR object in bytes.
+
+Files start with a length-prefixed header.
+
+At the moment, the header is zero-sized, so each file starts with
+`0x00 0x00 0x00 0x00`, but critically these shouldn't simply be skipped, but
+read and then the corresponding amount of bytes skipped.
+
+In the future, the header will contain indexes / lookup tables; reading the
+header will never be required to understand the file.
