@@ -9,10 +9,15 @@ use minicbor::{
 use pg_replicate::table::TableId;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Encode, Decode)]
 pub struct Event {
+    #[cbor(n(1))]
     pub table: Table,
+
+    #[cbor(n(2))]
     pub device: Device,
+
+    #[cbor(n(3))]
     pub snapshot: Snapshot,
 }
 
@@ -141,6 +146,24 @@ impl<'b, C> Decode<'b, C> for TamanuId {
             }
         }
     }
+}
+
+#[test]
+fn round_trip_tamanuid_free() {
+    let input = TamanuId::Free("facility-ExampleHospital".into());
+    let mut buffer = [0u8; 128];
+    minicbor::encode(&input, buffer.as_mut()).unwrap();
+    let output: TamanuId = minicbor::decode(buffer.as_ref()).unwrap();
+    assert_eq!(input, output);
+}
+
+#[test]
+fn round_trip_tamanuid_uuid() {
+    let input = TamanuId::Uuid(Uuid::new_v4());
+    let mut buffer = [0u8; 128];
+    minicbor::encode(&input, buffer.as_mut()).unwrap();
+    let output: TamanuId = minicbor::decode(buffer.as_ref()).unwrap();
+    assert_eq!(input, output);
 }
 
 const TAG_ETIME: Tag = Tag::new(1001);
@@ -281,4 +304,13 @@ impl<'b, C> Decode<'b, C> for Timestamp {
 
         Ok(Self(ts))
     }
+}
+
+#[test]
+fn round_trip_timestamp() {
+    let input = Timestamp(jiff::Timestamp::now());
+    let mut buffer = [0u8; 128];
+    minicbor::encode(&input, buffer.as_mut()).unwrap();
+    let output: Timestamp = minicbor::decode(buffer.as_ref()).unwrap();
+    assert_eq!(input, output);
 }

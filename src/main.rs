@@ -11,9 +11,9 @@ use pg_replicate::pipeline::{
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt as _};
 
 mod audit_sink;
-mod postgres_sink;
 mod avro_snapshot;
 mod event;
+mod postgres_sink;
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
