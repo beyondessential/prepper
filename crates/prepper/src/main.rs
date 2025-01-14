@@ -12,7 +12,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt as _};
 use uuid::Uuid;
 
 mod audit_sink;
-mod event;
 mod postgres_sink;
 
 #[derive(Debug, Parser)]

@@ -7,9 +7,7 @@ use minicbor::{
 use num_bigint::Sign;
 use pg_replicate::conversions::{numeric::PgNumeric, Cell};
 
-use crate::{audit_sink::ColumnDescription, event::Timestamp};
-
-use super::uuid::encode_uuid;
+use crate::{uuid::encode_uuid, Timestamp};
 
 const TAG_POSTGRES: Tag = Tag::new(u16::from_be_bytes([b'p', b'g']) as _);
 
@@ -17,7 +15,7 @@ const TAG_JSON: Tag = Tag::new(262);
 
 #[derive(Clone, Debug)]
 pub struct RowData {
-    pub columns: Vec<ColumnDescription>,
+    pub columns: Vec<String>,
     pub cells: Vec<Cell>,
 }
 
@@ -40,7 +38,7 @@ impl<C> Encode<C> for RowData {
                 continue;
             };
 
-            e.str(&col.name)?;
+            e.str(&col)?;
             match cell {
                 Cell::Null => e.null().map(drop),
                 Cell::Bool(v) => e.bool(*v).map(drop),

@@ -23,7 +23,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::event::{row_data::RowData, Device, Event, Snapshot, Table, VERSION};
+use prepper_event::{row_data::RowData, Device, Event, Snapshot, Table, VERSION};
 
 #[derive(Debug)]
 struct OpenFile {
@@ -284,7 +284,7 @@ impl TableDescription {
                         cell => panic!("string expected but got {cell:?}"),
                     }),
                 data: RowData {
-                    columns: self.columns.clone(),
+                    columns: self.columns.iter().map(|c| &c.name).cloned().collect(),
                     cells: row.values,
                 },
             },

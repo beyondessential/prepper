@@ -1106,7 +1106,36 @@ dependencies = [
 
 [[package]]
 name = "prepper"
-version = "0.1.0"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "clap",
+ "jiff",
+ "machine-uid",
+ "miette",
+ "minicbor",
+ "minicbor-io",
+ "num-bigint",
+ "pg-connection-string",
+ "pg_replicate",
+ "postgres-types",
+ "prepper-event",
+ "serde",
+ "serde_json",
+ "subtle-encoding",
+ "thiserror 2.0.11",
+ "tokio",
+ "tokio-postgres",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "prepper-event"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",

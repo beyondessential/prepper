@@ -1,0 +1,29 @@
+[package]
+name = "prepper"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.81"
+chrono = "0.4.39"
+clap = { version = "4.5.21", features = ["derive", "cargo"] }
+jiff = "0.1.14"
+machine-uid = "0.5.3"
+miette = { workspace = true, features = ["fancy"] }
+minicbor = { version = "0.25.1", features = ["derive", "std"] }
+minicbor-io = { version = "0.20.1", features = ["async-io"] }
+num-bigint = { workspace = true }
+pg-connection-string = "0.0.2"
+pg_replicate = { workspace = true }
+postgres-types = { workspace = true, default-features = false }
+prepper-event = { version = "0.0.0", path = "../prepper-event" }
+serde = { version = "1.0.209", features = ["derive", "rc"] }
+serde_json = "1.0.127"
+subtle-encoding = "0.5.1"
+thiserror = "2.0.11"
+tokio = { workspace = true, features = ["full"] }
+tokio-postgres = { workspace = true, default-features = false, features = ["with-chrono-0_4"] }
+tokio-util = { version = "0.7.13", features = ["compat"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+uuid = { version = "1.11.0", features = ["serde", "v4"] }

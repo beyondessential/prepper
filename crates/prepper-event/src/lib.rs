@@ -5,10 +5,10 @@ pub use tamanu_id::TamanuId;
 pub use timestamp::Timestamp;
 use uuid::Uuid;
 
-pub(crate) mod row_data;
-mod tamanu_id;
-mod timestamp;
-mod uuid;
+pub mod row_data;
+pub mod tamanu_id;
+pub mod timestamp;
+pub mod uuid;
 
 pub const VERSION: u8 = 1;
 
