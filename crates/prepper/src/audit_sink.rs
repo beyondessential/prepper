@@ -47,7 +47,7 @@ impl AuditSink {
 			.await
 	}
 
-	fn write_delete(
+	async fn write_delete(
 		&mut self,
 		_table: Arc<TableDescription>,
 		_row: TableRow,
@@ -56,7 +56,10 @@ impl AuditSink {
 		Ok(())
 	}
 
-	fn write_truncate(&mut self, _table: Arc<TableDescription>) -> Result<(), AuditSinkError> {
+	async fn write_truncate(
+		&mut self,
+		_table: Arc<TableDescription>,
+	) -> Result<(), AuditSinkError> {
 		// ignore truncates, as in the Tamanu sync model, no rows are ever deleted
 		Ok(())
 	}
@@ -157,7 +160,7 @@ impl BatchSink for AuditSink {
 						continue;
 					};
 
-					self.write_delete(table, row)?;
+					self.write_delete(table, row).await?;
 				}
 				CdcEvent::Relation(_relation) => {
 					// TODO
@@ -178,7 +181,8 @@ impl BatchSink for AuditSink {
 				}
 			}
 		}
-		Ok(PgLsn::from(0))
+
+		Ok(PgLsn::from(self.state.last_lsn))
 	}
 
 	async fn table_copied(&mut self, table_id: TableId) -> Result<(), Self::Error> {
@@ -188,8 +192,7 @@ impl BatchSink for AuditSink {
 			return Ok(());
 		};
 
-		self.write_rows(table, iter::empty()).await?;
-		Ok(())
+		self.write_rows(table, iter::empty()).await
 	}
 
 	async fn truncate_table(&mut self, table_id: TableId) -> Result<(), Self::Error> {
@@ -199,7 +202,6 @@ impl BatchSink for AuditSink {
 			return Ok(());
 		};
 
-		self.write_truncate(table)?;
-		Ok(())
+		self.write_truncate(table).await
 	}
 }

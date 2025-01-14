@@ -65,7 +65,7 @@ should only be modified by prepper.
 
 Most of these should be resolvable.
 
-- Adding a table to a publication with ALTER publishes the table definition to prepper, but not the initial table contents until the next stream restart.
+- Adding a table to a publication with ALTER doesn't stream the initial table data nor table schema to prepper until the next stream restart.
 - Unsure yet how custom types are handled, need to revisit.
 - Postgres arrays aren't supported yet and will crash prepper; this is easy but tedious to code.
 - Nested postgres arrays aren't supported by upstream.
@@ -73,4 +73,3 @@ Most of these should be resolvable.
 - Output file size is ~3-5x the disk usage of postgres tables. However, compressing the files is highly effective, up to 0.1 ratios.
 - The file format is a bit custom and not well handled by existing CBOR tooling, as there's no CBOR specification for streams of individual objects.
 - There's no indexing of objects, and it's unclear yet what indexing would be useful.
-- Stopping prepper before the first CDC event is received doesn't update the LSN, so there'll be duplicate data on restart.
