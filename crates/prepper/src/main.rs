@@ -13,6 +13,9 @@ use uuid::Uuid;
 
 mod audit_sink;
 mod postgres_sink;
+mod state;
+mod error;
+mod event_dir;
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
