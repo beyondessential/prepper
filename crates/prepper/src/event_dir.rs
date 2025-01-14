@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use minicbor_io::AsyncWriter;
 use prepper_event::{Device, Event, Snapshot, Table, VERSION};
-use tokio::io::AsyncWriteExt;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use tracing::{debug, instrument, warn};
 use uuid::Uuid;
@@ -29,15 +28,7 @@ impl OpenFile {
         ));
         debug!(?ts, ?path, "opening file");
 
-        let mut file = tokio::fs::File::create_new(path).await?;
-
-        // pseudo-header: a 0-value u32
-        // later this will be populated with a value
-        let mut buffer = [0u8; 4];
-        let mut encoder = minicbor::Encoder::new(&mut buffer[..]);
-        encoder.u32(0).unwrap();
-        file.write_all(&buffer).await?;
-
+        let file = tokio::fs::File::create_new(path).await?;
         let inner = AsyncWriter::new(file.compat_write());
         Ok(Self { ts, inner })
     }
