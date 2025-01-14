@@ -33,7 +33,7 @@ To start from scratch delete and recreate the output folder.
 
 _Length-prefixed CBOR objects in rotated files._
 
-Each file has the name `events-{device_id}-{start_time}.prep`:
+Each file has the name `events-{device_id}-{start_time}.prp`:
 - `{device_id}` is the Machine UUID in hex form with no hyphens.
 - `{start_time}` is the timestamp of the first object in the file, in
   nanoseconds since the epoch, in base10.
@@ -74,4 +74,4 @@ Most of these should be resolvable.
 - The `slot` argument in the connection string is optional but prepper will crash during init if it isn't present.
 - Output file size is ~3-5x the disk usage of postgres tables. However, compressing the files is highly effective, up to 0.1 ratios.
 - The file format is a bit custom and not well handled by existing CBOR tooling, as there's no CBOR specification for streams of individual objects.
-- There's no indexing of objects, and it's unclear yet what indexing would be useful. A header space has been reserved in the format for this eventual purpose.
+- There's no indexing of objects, and it's unclear yet what indexing would be useful.

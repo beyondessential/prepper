@@ -22,7 +22,7 @@ impl OpenFile {
 	) -> Result<Self, AuditSinkError> {
 		let ts = ts.unwrap_or_else(|| jiff::Timestamp::now());
 		let path = root.join(format!(
-			"events-{}-{}.prep",
+			"events-{}-{}.prp",
 			device.as_simple(),
 			ts.as_nanosecond()
 		));
