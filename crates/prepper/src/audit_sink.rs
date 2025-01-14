@@ -61,6 +61,7 @@ impl AuditSink {
 		Ok(())
 	}
 
+	#[instrument(level = "debug", skip(self))]
 	async fn write_lsn(&mut self, lsn: u64) -> Result<(), AuditSinkError> {
 		self.state.last_lsn = lsn;
 		self.state.write(self.dir.root()).await?;

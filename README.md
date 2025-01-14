@@ -70,7 +70,6 @@ Most of these should be resolvable.
 - Postgres arrays aren't supported yet and will crash prepper; this is easy but tedious to code.
 - Nested postgres arrays aren't supported by upstream.
 - Composite types aren't supported by upstream (or might be under custom types?).
-- The `slot` argument in the connection string is optional but prepper will crash during init if it isn't present.
 - Output file size is ~3-5x the disk usage of postgres tables. However, compressing the files is highly effective, up to 0.1 ratios.
 - The file format is a bit custom and not well handled by existing CBOR tooling, as there's no CBOR specification for streams of individual objects.
 - There's no indexing of objects, and it's unclear yet what indexing would be useful.
