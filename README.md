@@ -63,3 +63,24 @@ read and then the corresponding amount of bytes skipped.
 
 In the future, the header will contain indexes / lookup tables; reading the
 header will never be required to understand the file.
+
+### State
+
+There's also a `_state.json` file. This is to be considered opaque as it contains
+persisted state for the prepper process, but shouldn't be used by consumers, and
+should only be modified by prepper.
+
+## Known limitations
+
+Most of these should be resolvable.
+
+- Adding a table to a publication with ALTER publishes the table definition to prepper, but not the initial table contents until the next stream restart.
+- The `last_lsn` value isn't updated in the state file, so a restart gets all the initial data again.
+- Unsure yet how custom types are handled, need to revisit.
+- Postgres arrays aren't supported yet and will crash prepper; this is easy but tedious to code.
+- Nested postgres arrays aren't supported by upstream.
+- Composite types aren't supported by upstream (or might be under custom types?).
+- The `slot` argument in the connection string is optional but prepper will crash during init if it isn't present.
+- Output file size is ~3-5x the disk usage of postgres tables. However, compressing the files is highly effective, up to 0.1 ratios.
+- The file format is a bit custom and not well handled by existing CBOR tooling, as there's no CBOR specification for streams of individual objects.
+- There's no indexing of objects, and it's unclear yet what indexing would be useful. A header space has been reserved in the format for this eventual purpose.
