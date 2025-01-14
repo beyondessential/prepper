@@ -60,6 +60,12 @@ impl AuditSink {
 		// ignore truncates, as in the Tamanu sync model, no rows are ever deleted
 		Ok(())
 	}
+
+	async fn write_lsn(&mut self, lsn: u64) -> Result<(), AuditSinkError> {
+		self.state.last_lsn = lsn;
+		self.state.write(self.dir.root()).await?;
+		Ok(())
+	}
 }
 
 // An interesting thing to note is that the methods is &mut self, which means that we are guaranteed
@@ -152,8 +158,23 @@ impl BatchSink for AuditSink {
 
 					self.write_delete(table, row)?;
 				}
-				CdcEvent::Relation(_) => { /* TODO */ }
-				_ => { /* ignore */ }
+				CdcEvent::Relation(_relation) => {
+					// TODO
+				}
+				CdcEvent::Begin(begin_body) => {
+					// TODO
+					self.write_lsn(begin_body.final_lsn()).await?;
+				}
+				CdcEvent::Commit(commit_body) => {
+					// TODO
+					self.write_lsn(commit_body.end_lsn()).await?;
+				}
+				CdcEvent::Type(_type_body) => {
+					// TODO
+				}
+				CdcEvent::KeepAliveRequested { reply: _ } => {
+					// TODO
+				}
 			}
 		}
 		Ok(PgLsn::from(0))

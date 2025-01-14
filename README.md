@@ -66,7 +66,6 @@ should only be modified by prepper.
 Most of these should be resolvable.
 
 - Adding a table to a publication with ALTER publishes the table definition to prepper, but not the initial table contents until the next stream restart.
-- The `last_lsn` value isn't updated in the state file, so a restart gets all the initial data again.
 - Unsure yet how custom types are handled, need to revisit.
 - Postgres arrays aren't supported yet and will crash prepper; this is easy but tedious to code.
 - Nested postgres arrays aren't supported by upstream.
