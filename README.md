@@ -74,3 +74,4 @@ Most of these should be resolvable.
 - The file format is a bit custom and not well handled by existing CBOR tooling, as there's no CBOR specification for streams of individual objects.
 - There's no indexing of objects, and it's unclear yet what indexing would be useful.
 - Table subsetting is not supported.
+- Transaction rollbacks aren't handled.

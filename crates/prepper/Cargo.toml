@@ -15,6 +15,7 @@ minicbor-io = { version = "0.20.1", features = ["async-io"] }
 num-bigint = { workspace = true }
 pg-connection-string = "0.0.2"
 pg_replicate = { workspace = true }
+postgres-replication = { workspace = true, default-features = false }
 postgres-types = { workspace = true, default-features = false }
 prepper-event = { version = "0.0.0", path = "../prepper-event" }
 serde = { version = "1.0.209", features = ["derive", "rc"] }

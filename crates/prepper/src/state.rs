@@ -8,6 +8,8 @@ use pg_replicate::{
 	conversions::{table_row::TableRow, Cell},
 	table::{TableId, TableSchema},
 };
+use postgres_replication::protocol::RelationBody;
+use tracing::warn;
 use uuid::Uuid;
 
 use prepper_event::{row_data::RowData, Snapshot, Table};
@@ -83,7 +85,7 @@ impl Offsets {
 }
 
 impl TableDescription {
-	pub fn new(id: TableId, schema: TableSchema) -> Option<Self> {
+	pub fn from_schema(id: TableId, schema: TableSchema) -> Option<Self> {
 		let columns: Vec<ColumnDescription> = schema
 			.column_schemas
 			.into_iter()
@@ -100,6 +102,39 @@ impl TableDescription {
 			id,
 			schema: schema.table_name.schema,
 			name: schema.table_name.name,
+			offsets,
+			columns,
+		})
+	}
+
+	pub fn from_relation(relation: RelationBody) -> Option<Self> {
+		let table_schema = relation
+			.namespace()
+			.inspect_err(|err| warn!(?err, "non-UTF-8 table schema"))
+			.ok()?;
+		let table_name = relation
+			.name()
+			.inspect_err(|err| warn!(?err, "non-UTF-8 table name"))
+			.ok()?;
+
+		let columns: Vec<ColumnDescription> = relation
+			.columns()
+			.into_iter()
+			.map(|col| {
+				ColumnDescription {
+					name: col.name().expect("non-UTF-8 column name").into(),
+					type_oid: col.type_id().try_into().expect("type oid too high"),
+					modifier: col.type_modifier(),
+					nullable: true, // TODO
+					primary: col.flags() == 1,
+				}
+			})
+			.collect();
+
+		Offsets::new(&columns).map(|offsets| Self {
+			id: relation.rel_id(),
+			schema: table_schema.into(),
+			name: table_name.into(),
 			offsets,
 			columns,
 		})

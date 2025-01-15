@@ -60,17 +60,19 @@ async fn main() -> Result<()> {
 		&args.pg.database.unwrap_or_default(),
 		&args.pg.user.unwrap_or_default(),
 		args.pg.password,
-		Some(args.pg
-			.parameters
-			.iter()
-			.find_map(|p| {
-				if p.keyword == "slot" {
-					Some(p.value.clone())
-				} else {
-					None
-				}
-			})
-			.unwrap_or("prepper".into())),
+		Some(
+			args.pg
+				.parameters
+				.iter()
+				.find_map(|p| {
+					if p.keyword == "slot" {
+						Some(p.value.clone())
+					} else {
+						None
+					}
+				})
+				.unwrap_or("prepper".into()),
+		),
 		TableNamesFrom::Publication(
 			args.pg
 				.parameters

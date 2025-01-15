@@ -671,7 +671,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -959,7 +959,7 @@ dependencies = [
 [[package]]
 name = "pg_replicate"
 version = "0.1.0"
-source = "git+https://github.com/supabase/pg_replicate?branch=main#1afbd50f2422d9e6b53ddb602b0fca81984968f6"
+source = "git+https://github.com/passcod/pg_replicate?branch=patch-1#8c8ff052f843542c060581ea287ec0d32a5dd2b6"
 dependencies = [
  "async-trait",
  "bigdecimal",
@@ -1120,6 +1120,7 @@ dependencies = [
  "num-bigint",
  "pg-connection-string",
  "pg_replicate",
+ "postgres-replication",
  "postgres-types",
  "prepper-event",
  "serde",

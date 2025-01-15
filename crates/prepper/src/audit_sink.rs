@@ -105,7 +105,7 @@ impl BatchSink for AuditSink {
 		self.state
 			.tables
 			.extend(table_schemas.into_iter().filter_map(|(id, schema)| {
-				TableDescription::new(id, schema).map(|desc| (id, Arc::new(desc)))
+				TableDescription::from_schema(id, schema).map(|desc| (id, Arc::new(desc)))
 			}));
 		self.state.write(self.dir.root()).await?;
 		Ok(())
@@ -162,21 +162,26 @@ impl BatchSink for AuditSink {
 
 					self.write_delete(table, row).await?;
 				}
-				CdcEvent::Relation(_relation) => {
-					// TODO
+				CdcEvent::Relation(relation) => {
+					let table = TableDescription::from_relation(relation).unwrap();
+					self.state.tables.insert(table.id, Arc::new(table));
+					self.state.write(self.dir.root()).await?;
 				}
 				CdcEvent::Begin(begin_body) => {
-					// TODO
+					// TODO: handle transactions
 					self.write_lsn(begin_body.final_lsn()).await?;
 				}
 				CdcEvent::Commit(commit_body) => {
-					// TODO
+					// TODO: handle transactions
 					self.write_lsn(commit_body.end_lsn()).await?;
 				}
 				CdcEvent::Type(_type_body) => {
-					// TODO
+					// TODO: handle type creation (and custom types etc)
 				}
-				CdcEvent::KeepAliveRequested { reply: _ } => {
+				CdcEvent::KeepAliveRequested { reply: false } => {
+					// do nothing
+				}
+				CdcEvent::KeepAliveRequested { reply: true } => {
 					// TODO
 				}
 			}
