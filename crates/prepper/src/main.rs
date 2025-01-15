@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
 		&args.pg.database.unwrap_or_default(),
 		&args.pg.user.unwrap_or_default(),
 		args.pg.password,
-		args.pg
+		Some(args.pg
 			.parameters
 			.iter()
 			.find_map(|p| {
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
 					None
 				}
 			})
-			.or(Some("prepper".into())),
+			.unwrap_or("prepper".into())),
 		TableNamesFrom::Publication(
 			args.pg
 				.parameters
