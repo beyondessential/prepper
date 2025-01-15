@@ -27,7 +27,7 @@ mkdir history
 prepper --pg "postgres://user@localhost/database-name?pub=prepper" --out history
 ```
 
-To start from scratch delete and recreate the output folder.
+To start from scratch delete the output folder.
 
 ## File format
 
