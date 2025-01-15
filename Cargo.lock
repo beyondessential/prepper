@@ -959,7 +959,7 @@ dependencies = [
 [[package]]
 name = "pg_replicate"
 version = "0.1.0"
-source = "git+https://github.com/passcod/pg_replicate?branch=feat%2Fcolsubset#8968e6d72b5b47b43c8282dd022282f3a7d65023"
+source = "git+https://github.com/passcod/pg_replicate?branch=feat%2Fcolsubset#16b07f92cd17c7e380179c7aa9acb3bf079047c6"
 dependencies = [
  "async-trait",
  "bigdecimal",
