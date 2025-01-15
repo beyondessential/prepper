@@ -8,7 +8,7 @@ members = [
 [workspace.dependencies]
 miette = "7.4.0"
 num-bigint = "0.4.6"
-pg_replicate = { git = "https://github.com/supabase/pg_replicate", branch = "main" }
+pg_replicate = { git = "https://github.com/passcod/pg_replicate", branch = "patch-1" }
 postgres-types = { git = "https://github.com/imor/rust-postgres", default-features = false, rev = "20265ef38e32a06f76b6f9b678e2077fc2211f6b" }
 tokio = "1.38.0"
 tokio-postgres = { git = "https://github.com/imor/rust-postgres", default-features = false, rev = "20265ef38e32a06f76b6f9b678e2077fc2211f6b" }
